@@ -3,7 +3,8 @@ require_once '../config/database.php';
 date_default_timezone_set('Asia/Jakarta');
 if ($_SESSION['role'] != 'owner') { header("Location: ../auth/login_system.php"); exit; }
 
-$tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-01');
+// --- DEFAULT FILTER 7 HARI TERAKHIR ---
+$tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-d', strtotime('-6 days'));
 $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
 
 // Total Omset
@@ -61,10 +62,17 @@ foreach ($allBranches as $branch) {
     }
 }
 
-// GRAFIK OMSET HARIAN PER CABANG (7 hari terakhir)
+// =====================================================
+// GRAFIK OMSET HARIAN PER CABANG (Mengikuti Filter)
+// =====================================================
 $grafikDates = [];
-for ($i = 6; $i >= 0; $i--) {
-    $grafikDates[] = date('Y-m-d', strtotime("-$i days"));
+$currentDate = new DateTime($tgl_awal);
+$endDate = new DateTime($tgl_akhir);
+$endDate->modify('+1 day'); // Include end date
+$interval = new DateInterval('P1D');
+$dateRange = new DatePeriod($currentDate, $interval, $endDate);
+foreach ($dateRange as $date) {
+    $grafikDates[] = $date->format('Y-m-d');
 }
 
 $sqlOmsetPerCabang = "SELECT t.branch_id, b.nama_cabang,
@@ -72,10 +80,12 @@ $sqlOmsetPerCabang = "SELECT t.branch_id, b.nama_cabang,
                        SUM(t.total_bayar) as omset
                        FROM transactions t
                        JOIN branches b ON t.branch_id = b.id
-                       WHERE t.tanggal_transaksi BETWEEN DATE_SUB(CURDATE(), INTERVAL 6 DAY) AND CURDATE()
+                       WHERE t.tanggal_transaksi BETWEEN ? AND ?
                        GROUP BY t.branch_id, b.nama_cabang, DATE(t.tanggal_transaksi)
                        ORDER BY b.nama_cabang ASC, tanggal ASC";
-$rawOmsetCabang = $pdo->query($sqlOmsetPerCabang)->fetchAll();
+$stmtOmsetCabang = $pdo->prepare($sqlOmsetPerCabang);
+$stmtOmsetCabang->execute([$tgl_awal, $tgl_akhir]);
+$rawOmsetCabang = $stmtOmsetCabang->fetchAll();
 
 $omsetByCabang = [];
 foreach ($rawOmsetCabang as $row) {
@@ -95,16 +105,20 @@ foreach ($grafikDates as $tgl) {
     $grafikOmsetTotal[] = $totalHari;
 }
 
-// GRAFIK TRANSAKSI HARIAN PER CABANG (7 hari terakhir)
+// =====================================================
+// GRAFIK TRANSAKSI HARIAN PER CABANG (Mengikuti Filter)
+// =====================================================
 $sqlTrxPerCabang = "SELECT t.branch_id, b.nama_cabang,
                      DATE(t.tanggal_transaksi) as tanggal,
                      COUNT(*) as total
                      FROM transactions t
                      JOIN branches b ON t.branch_id = b.id
-                     WHERE t.tanggal_transaksi BETWEEN DATE_SUB(CURDATE(), INTERVAL 6 DAY) AND CURDATE()
+                     WHERE t.tanggal_transaksi BETWEEN ? AND ?
                      GROUP BY t.branch_id, b.nama_cabang, DATE(t.tanggal_transaksi)
                      ORDER BY b.nama_cabang ASC, tanggal ASC";
-$rawTrxCabang = $pdo->query($sqlTrxPerCabang)->fetchAll();
+$stmtTrxCabang = $pdo->prepare($sqlTrxPerCabang);
+$stmtTrxCabang->execute([$tgl_awal, $tgl_akhir]);
+$rawTrxCabang = $stmtTrxCabang->fetchAll();
 
 $trxByCabang = [];
 foreach ($rawTrxCabang as $row) {
@@ -218,19 +232,19 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                 </div>
                 <div class="topbar-right">
                     <span style="color: var(--text-muted); font-size:14px;">Halo, <strong style="color:var(--text-dark);"><?= htmlspecialchars($_SESSION['nama']) ?></strong></span>
-                    <button class="theme-btn" onclick="toggleTheme()">Dark / Light</button>
+                    <button class="theme-btn" onclick="toggleTheme()">Mode Layar</button>
                 </div>
             </div>
 
             <div class="card" style="margin-bottom: 20px;">
-                <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap; padding: 15px 20px;">
                     <strong style="color:var(--text-dark); font-size:14px;">Periode Data:</strong>
                     <form method="GET" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                         <input type="date" name="tgl_awal" value="<?= $tgl_awal ?>" class="form-control" style="width: auto; padding:8px;" required>
                         <span style="color:var(--text-muted);">s/d</span>
                         <input type="date" name="tgl_akhir" value="<?= $tgl_akhir ?>" class="form-control" style="width: auto; padding:8px;" required>
-                        <button type="submit" class="btn btn-primary">Filter</button>
-                        <a href="dashboard_owner.php" class="btn btn-secondary">Reset</a>
+                        <button type="submit" class="btn btn-primary">Terapkan</button>
+                        <a href="dashboard_owner.php" class="btn btn-secondary">Reset 7 Hari</a>
                     </form>
                 </div>
             </div>
@@ -260,15 +274,19 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
 
             <div class="grid-2">
                 <div class="card">
-                    <div class="card-header">Grafik Omset (7 Hari Terakhir)</div>
-                    <div id="legendOmset" class="chart-legend-wrap"></div>
-                    <div class="chart-container"><canvas id="chartOmset"></canvas></div>
+                    <div class="card-header">Grafik Omset (<?= date('d/m', strtotime($tgl_awal)) ?> - <?= date('d/m/Y', strtotime($tgl_akhir)) ?>)</div>
+                    <div style="padding: 20px;">
+                        <div id="legendOmset" class="chart-legend-wrap"></div>
+                        <div class="chart-container"><canvas id="chartOmset"></canvas></div>
+                    </div>
                 </div>
 
                 <div class="card">
-                    <div class="card-header">Grafik Transaksi (7 Hari Terakhir)</div>
-                    <div id="legendTrx" class="chart-legend-wrap"></div>
-                    <div class="chart-container"><canvas id="chartTransaksi"></canvas></div>
+                    <div class="card-header">Grafik Transaksi (<?= date('d/m', strtotime($tgl_awal)) ?> - <?= date('d/m/Y', strtotime($tgl_akhir)) ?>)</div>
+                    <div style="padding: 20px;">
+                        <div id="legendTrx" class="chart-legend-wrap"></div>
+                        <div class="chart-container"><canvas id="chartTransaksi"></canvas></div>
+                    </div>
                 </div>
             </div>
 
@@ -315,7 +333,7 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                     <span class="live-indicator"></span> Customer Sedang Dilayani
                 </div>
                 <?php if(count($customerAktif) > 0): ?>
-                    <div class="customer-table-wrapper">
+                    <div class="customer-table-wrapper" style="padding: 20px;">
                         <?php 
                         $groupedCustomers = [];
                         foreach($customerAktif as $c) { $groupedCustomers[$c['nama_cabang']][] = $c; }
@@ -323,48 +341,50 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                         <?php foreach($groupedCustomers as $cabang => $customers): ?>
                         <div class="branch-group">
                             <h4><?= htmlspecialchars($cabang) ?> (<?= count($customers) ?> Customer)</h4>
-                            <table style="width: 100%;">
-                                <thead>
-                                    <tr>
-                                        <th>Bed</th>
-                                        <th>Nama Customer</th>
-                                        <th>Paket</th>
-                                        <th>Terapis</th>
-                                        <th>Selesai</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach($customers as $c): 
-                                        $now    = new DateTime();
-                                        $finish = new DateTime($c['waktu_selesai']);
-                                        $sudahLewat   = ($now > $finish);
-                                    ?>
-                                    <tr>
-                                        <td><strong><?= htmlspecialchars($c['nomor_bed'] ?? '-') ?></strong></td>
-                                        <td><?= htmlspecialchars($c['nama_pelanggan']) ?></td>
-                                        <td><?= htmlspecialchars($c['nama_paket']) ?></td>
-                                        <td><?= htmlspecialchars($c['nama_terapis']) ?></td>
-                                        <td><?= date('H:i', strtotime($c['waktu_selesai'])) ?></td>
-                                        <td>
-                                            <?php if ($c['status'] === 'menunggu_pembayaran'): ?>
-                                                <span class="badge badge-warning">Menunggu Pembayaran</span>
-                                            <?php elseif ($sudahLewat): ?>
-                                                <span class="badge badge-danger">Seharusnya Selesai</span>
-                                            <?php else: ?>
-                                                <?php
-                                                $diff = $now->diff($finish);
-                                                $sisaMenit = ($diff->h * 60) + $diff->i;
-                                                ?>
-                                                <span class="badge badge-success">
-                                                    <?= $diff->format('%H:%I') ?> lagi
-                                                </span>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
+                            <div class="table-container">
+                                <table style="width: 100%;">
+                                    <thead>
+                                        <tr>
+                                            <th>Bed</th>
+                                            <th>Nama Customer</th>
+                                            <th>Paket</th>
+                                            <th>Terapis</th>
+                                            <th>Selesai</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach($customers as $c): 
+                                            $now    = new DateTime();
+                                            $finish = new DateTime($c['waktu_selesai']);
+                                            $sudahLewat   = ($now > $finish);
+                                        ?>
+                                        <tr>
+                                            <td><strong><?= htmlspecialchars($c['nomor_bed'] ?? '-') ?></strong></td>
+                                            <td><?= htmlspecialchars($c['nama_pelanggan']) ?></td>
+                                            <td><?= htmlspecialchars($c['nama_paket']) ?></td>
+                                            <td><?= htmlspecialchars($c['nama_terapis']) ?></td>
+                                            <td><?= date('H:i', strtotime($c['waktu_selesai'])) ?></td>
+                                            <td>
+                                                <?php if ($c['status'] === 'menunggu_pembayaran'): ?>
+                                                    <span class="badge badge-warning">Menunggu Pembayaran</span>
+                                                <?php elseif ($sudahLewat): ?>
+                                                    <span class="badge badge-danger">Seharusnya Selesai</span>
+                                                <?php else: ?>
+                                                    <?php
+                                                    $diff = $now->diff($finish);
+                                                    $sisaMenit = ($diff->h * 60) + $diff->i;
+                                                    ?>
+                                                    <span class="badge badge-success">
+                                                        <?= $diff->format('%H:%I') ?> lagi
+                                                    </span>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                         <?php endforeach; ?>
                     </div>
@@ -392,7 +412,7 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                 </div>
 
                 <div class="card">
-                    <div class="card-header">Top 5 Terapis Terbaik</div>
+                    <div class="card-header">Top 5 Terapis Terbaik (Periode Ini)</div>
                     <div class="table-container">
                         <table>
                             <thead><tr><th>Nama Terapis</th><th>Cabang</th><th>Total Trx</th><th>Komisi Terapis</th></tr></thead>
@@ -411,7 +431,7 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                                     <?php endforeach; ?>
                                 <?php endforeach; ?>
                                 <?php if(count($topTerapisPerCabang) == 0): ?>
-                                <tr><td colspan="4" style="text-align: center; padding: 30px; color: var(--text-muted);">Belum ada data terapis</td></tr>
+                                <tr><td colspan="4" style="text-align: center; padding: 30px; color: var(--text-muted);">Belum ada data terapis di periode ini</td></tr>
                                 <?php endif; ?>
                             </tbody>
                         </table>

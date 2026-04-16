@@ -139,23 +139,16 @@ if (!empty($activeTrxIds)) {
     } catch (Exception $e) {}
 }
 
-// STATUS TERAPIS
-$stmtTerapis = $pdo->prepare("SELECT u.id, u.nama_lengkap,
-    (SELECT t.waktu_selesai FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses','menunggu_pembayaran') ORDER BY t.waktu_selesai DESC LIMIT 1) as waktu_selesai,
-    (SELECT t.id FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as current_trx_id,
-    (SELECT tl.to_branch_id FROM terapis_loans tl JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as dipinjam_ke,
-    (SELECT br.nama_cabang FROM terapis_loans tl JOIN branches br ON tl.to_branch_id = br.id JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as nama_cabang_peminjam,
-    (SELECT t.waktu_selesai FROM terapis_loans tl JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as waktu_kembali_estimasi
-    FROM users u WHERE u.role = 'terapis' AND u.home_branch_id = ? ORDER BY u.nama_lengkap ASC");
-$stmtTerapis->execute([$branch_id, $branch_id, $branch_id, $branch_id]);
-$terapis = $stmtTerapis->fetchAll();
-
-// IZIN/SAKIT TERAPIS HARI INI
+// =========================================================
+// IZIN/SAKIT TERAPIS HARI INI & PERIODE
+// =========================================================
 $jamMulaiBisnis = $settings['jam_mulai_hari'] ?? '08:00:00';
 $jamSekarang2   = date('H:i:s');
 $tglBisnis      = ($jamSekarang2 < $jamMulaiBisnis) ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d');
-$izinMapDK = [];
+$start_periode  = "$tglBisnis $jamMulaiBisnis";
+$end_periode    = date('Y-m-d H:i:s', strtotime("$start_periode +1 day"));
 
+$izinMapDK = [];
 $cekTabelIzin = $pdo->query("SHOW TABLES LIKE 'terapis_izin'")->rowCount();
 if ($cekTabelIzin > 0) {
     $stmtIzinDK = $pdo->prepare("SELECT terapis_id, jenis, status FROM terapis_izin WHERE branch_id = ? AND tanggal = ? AND status IN ('disetujui','pending')");
@@ -165,8 +158,39 @@ if ($cekTabelIzin > 0) {
     }
 }
 
+// =========================================================
+// STATUS TERAPIS (Mengikuti urutan di input_transaksi.php)
+// =========================================================
+$sqlTerapis = "SELECT u.id, u.nama_lengkap, 
+    (SELECT COUNT(*) FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses', 'menunggu_approval', 'menunggu_pembayaran')) as is_busy, 
+    (SELECT COUNT(*) FROM terapis_loans tl JOIN transactions tlt ON tl.transaction_id = tlt.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status IN ('active', 'pending') AND tlt.status IN ('proses', 'menunggu_approval', 'menunggu_pembayaran')) as is_loaned, 
+    (SELECT COUNT(*) FROM transactions t2 WHERE t2.terapis_id = u.id AND t2.created_at >= ? AND t2.created_at < ? AND t2.status != 'batal') as kerja_hari_ini, 
+    (SELECT MAX(t3.waktu_selesai) FROM transactions t3 WHERE t3.terapis_id = u.id AND t3.created_at >= ? AND t3.created_at < ? AND t3.status IN ('selesai','proses','menunggu_pembayaran')) as last_selesai, 
+    ta.giliran as giliran_absen, ta.waktu_absen,
+    (SELECT t.waktu_selesai FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses','menunggu_pembayaran') ORDER BY t.waktu_selesai DESC LIMIT 1) as waktu_selesai,
+    (SELECT t.id FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as current_trx_id,
+    (SELECT tl.to_branch_id FROM terapis_loans tl JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as dipinjam_ke,
+    (SELECT br.nama_cabang FROM terapis_loans tl JOIN branches br ON tl.to_branch_id = br.id JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as nama_cabang_peminjam,
+    (SELECT t.waktu_selesai FROM terapis_loans tl JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as waktu_kembali_estimasi
+    FROM users u LEFT JOIN terapis_attendance ta ON u.id = ta.terapis_id AND ta.branch_id = ? AND ta.tanggal = ? 
+    WHERE u.role = 'terapis' AND u.home_branch_id = ? 
+    ORDER BY (ta.id IS NULL) ASC, kerja_hari_ini ASC, IFNULL(ta.giliran, 9999) ASC, last_selesai ASC, u.nama_lengkap ASC";
+
+$stmtTerapis = $pdo->prepare($sqlTerapis);
+$stmtTerapis->execute([
+    $branch_id, 
+    $start_periode, $end_periode, 
+    $start_periode, $end_periode,
+    $branch_id,
+    $branch_id,
+    $branch_id,
+    $branch_id, $tglBisnis,
+    $branch_id
+]);
+$terapis = $stmtTerapis->fetchAll();
+
+
 // SHIFT AKTIF SEKARANG
-$start_periode  = "$tglBisnis $jamMulaiBisnis";
 $sqlShiftAktif = "SELECT ka.id, ka.waktu_masuk, ka.omset_shift, ka.total_transaksi_shift, u.nama_lengkap as nama_kasir
                   FROM kasir_attendance ka JOIN users u ON ka.kasir_id = u.id
                   WHERE ka.branch_id = ? AND ka.status = 'aktif' AND ka.waktu_masuk >= ?
@@ -340,11 +364,10 @@ try {
         .panggilan-action-btn { padding:6px 12px; border:none; border-radius:6px; font-size:12px; font-weight:bold; cursor:pointer; margin:2px; transition: 0.2s; }
         .panggilan-action-btn:hover { filter: brightness(1.1); }
 
-        /* Dropdown Profil Topbar */
         .user-dropdown-wrap { position: relative; display: inline-block; margin-left: 10px; border-left: 1px solid var(--border-color); padding-left: 15px; }
         .btn-profile-dropdown { display: flex; align-items: center; gap: 10px; background: transparent; border: none; cursor: pointer; padding: 5px 10px; border-radius: 8px; transition: 0.2s; }
         .btn-profile-dropdown:hover { background: var(--bg-input); }
-        .btn-profile-dropdown img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-yellow); }
+        .btn-profile-dropdown img { width: 36px !important; height: 36px !important; border-radius: 50% !important; object-fit: cover !important; border: 2px solid var(--accent-yellow) !important; }
         .btn-profile-dropdown span { font-weight: 700; color: var(--text-dark); font-size: 14px; }
         .user-dropdown-menu { position: absolute; right: 0; top: 110%; background: var(--bg-panel); min-width: 180px; box-shadow: var(--shadow-md); border-radius: 12px; border: 1px solid var(--border-color); display: none; flex-direction: column; z-index: 1000; overflow: hidden; }
         .user-dropdown-menu.show { display: flex; animation: fadeIn 0.2s; }
@@ -377,7 +400,7 @@ try {
     <div class="container-layout">
         <div class="sidebar" id="sidebar">
             <div class="sidebar-profile">
-                <img src="<?= $foto_profil ?>" alt="Profil">
+                <img src="<?= $foto_profil ?>" alt="Profil" style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 3px solid var(--accent-yellow); margin-bottom: 10px;">
                 <div class="profile-info">
                     <h3><?= htmlspecialchars($nama_kasir) ?></h3>
                     <small><?= htmlspecialchars($nama_cabang) ?></small>
@@ -700,6 +723,7 @@ try {
                                     $isBusy     = ($t['current_trx_id'] != null);
                                     $isDipinjam = ($t['dipinjam_ke'] != null);
                                     $isIzinSakit = isset($izinMapDK[$t['id']]);
+                                    $sudahAbsen = isset($t['waktu_absen']);
                                 ?>
                                 <tr>
                                     <td>
@@ -710,9 +734,14 @@ try {
                                         <?php if($isIzinSakit): ?>
                                             <?php if($izinMapDK[$t['id']]['jenis'] === 'sakit'): ?><span class="badge badge-danger">SAKIT</span>
                                             <?php else: ?><span class="badge badge-warning">IZIN</span><?php endif; ?>
-                                        <?php elseif($isDipinjam): ?><span class="badge badge-warning">DIPINJAM</span>
-                                        <?php elseif($isBusy): ?><span class="badge badge-danger">SIBUK</span>
-                                        <?php else: ?><span class="badge badge-success">STANDBY</span>
+                                        <?php elseif(!$sudahAbsen): ?>
+                                            <span class="badge" style="background:var(--bg-input); color:var(--text-muted); border: 1px solid var(--border-color);">BELUM ABSEN</span>
+                                        <?php elseif($isDipinjam): ?>
+                                            <span class="badge badge-warning">DIPINJAM</span>
+                                        <?php elseif($isBusy): ?>
+                                            <span class="badge badge-danger">SIBUK</span>
+                                        <?php else: ?>
+                                            <span class="badge badge-success">STANDBY</span>
                                         <?php endif; ?>
                                     </td>
                                     <td>
