@@ -63,25 +63,62 @@ foreach ($allBranches as $branch) {
 }
 
 // =====================================================
-// GRAFIK OMSET HARIAN PER CABANG (Mengikuti Filter)
+// GRAFIK OMSET & TRANSAKSI DINAMIS (Harian/Mingguan/Bulanan)
 // =====================================================
 $grafikDates = [];
-$currentDate = new DateTime($tgl_awal);
-$endDate = new DateTime($tgl_akhir);
-$endDate->modify('+1 day'); // Include end date
-$interval = new DateInterval('P1D');
-$dateRange = new DatePeriod($currentDate, $interval, $endDate);
-foreach ($dateRange as $date) {
-    $grafikDates[] = $date->format('Y-m-d');
+$start_dt = new DateTime($tgl_awal);
+$end_dt = new DateTime($tgl_akhir);
+$diff_days = $start_dt->diff($end_dt)->days;
+
+if ($diff_days <= 14) {
+    // Harian (<= 14 hari)
+    $sqlGroup = "DATE(t.tanggal_transaksi)";
+    $interval = new DateInterval('P1D');
+    $end_dt_clone = clone $end_dt;
+    $end_dt_clone->modify('+1 day'); // include end date
+    $period = new DatePeriod($start_dt, $interval, $end_dt_clone);
+    foreach ($period as $dt) {
+        $grafikDates[$dt->format('Y-m-d')] = $dt->format('d/m');
+    }
+    $label_group = "Harian";
+} elseif ($diff_days <= 90) {
+    // Mingguan (15 - 90 hari) -> Max 3 bulan
+    $sqlGroup = "YEARWEEK(t.tanggal_transaksi, 3)"; // Mode 3 = ISO week (Senin)
+    $curr = clone $start_dt;
+    $end_dt_clone = clone $end_dt;
+    while ($curr <= $end_dt_clone) {
+        $key = $curr->format('oW'); // Format MySQL YEARWEEK
+        if (!isset($grafikDates[$key])) {
+            $wStart = clone $curr; 
+            $wStart->setISODate((int)$curr->format('o'), (int)$curr->format('W'));
+            $wEnd = clone $wStart; 
+            $wEnd->modify('+6 days');
+            $grafikDates[$key] = $wStart->format('d/m') . ' - ' . $wEnd->format('d/m');
+        }
+        $curr->modify('+1 day');
+    }
+    $label_group = "Mingguan";
+} else {
+    // Bulanan (> 90 hari)
+    $sqlGroup = "DATE_FORMAT(t.tanggal_transaksi, '%Y-%m')";
+    $curr = new DateTime($start_dt->format('Y-m-01'));
+    $end_dt_clone = clone $end_dt;
+    while ($curr <= $end_dt_clone) {
+        $key = $curr->format('Y-m');
+        $grafikDates[$key] = $curr->format('M Y'); // Misal: Jan 2026
+        $curr->modify('+1 month');
+    }
+    $label_group = "Bulanan";
 }
 
+// Mengambil Data Omset sesuai Grup (Harian/Mingguan/Bulanan)
 $sqlOmsetPerCabang = "SELECT t.branch_id, b.nama_cabang,
-                       DATE(t.tanggal_transaksi) as tanggal,
+                       $sqlGroup as tanggal,
                        SUM(t.total_bayar) as omset
                        FROM transactions t
                        JOIN branches b ON t.branch_id = b.id
                        WHERE t.tanggal_transaksi BETWEEN ? AND ?
-                       GROUP BY t.branch_id, b.nama_cabang, DATE(t.tanggal_transaksi)
+                       GROUP BY t.branch_id, b.nama_cabang, $sqlGroup
                        ORDER BY b.nama_cabang ASC, tanggal ASC";
 $stmtOmsetCabang = $pdo->prepare($sqlOmsetPerCabang);
 $stmtOmsetCabang->execute([$tgl_awal, $tgl_akhir]);
@@ -92,29 +129,14 @@ foreach ($rawOmsetCabang as $row) {
     $omsetByCabang[$row['nama_cabang']][$row['tanggal']] = floatval($row['omset']);
 }
 
-$grafikOmsetPerCabang = [];
-$grafikOmsetTotal = [];
-foreach ($grafikDates as $tgl) {
-    $totalHari = 0;
-    foreach ($allBranches as $br) {
-        $nama = $br['nama_cabang'];
-        $val = $omsetByCabang[$nama][$tgl] ?? 0;
-        $grafikOmsetPerCabang[$nama][] = $val;
-        $totalHari += $val;
-    }
-    $grafikOmsetTotal[] = $totalHari;
-}
-
-// =====================================================
-// GRAFIK TRANSAKSI HARIAN PER CABANG (Mengikuti Filter)
-// =====================================================
+// Mengambil Data Transaksi sesuai Grup (Harian/Mingguan/Bulanan)
 $sqlTrxPerCabang = "SELECT t.branch_id, b.nama_cabang,
-                     DATE(t.tanggal_transaksi) as tanggal,
+                     $sqlGroup as tanggal,
                      COUNT(*) as total
                      FROM transactions t
                      JOIN branches b ON t.branch_id = b.id
                      WHERE t.tanggal_transaksi BETWEEN ? AND ?
-                     GROUP BY t.branch_id, b.nama_cabang, DATE(t.tanggal_transaksi)
+                     GROUP BY t.branch_id, b.nama_cabang, $sqlGroup
                      ORDER BY b.nama_cabang ASC, tanggal ASC";
 $stmtTrxCabang = $pdo->prepare($sqlTrxPerCabang);
 $stmtTrxCabang->execute([$tgl_awal, $tgl_akhir]);
@@ -125,20 +147,32 @@ foreach ($rawTrxCabang as $row) {
     $trxByCabang[$row['nama_cabang']][$row['tanggal']] = intval($row['total']);
 }
 
+// Mapping Final untuk Chart JS
+$grafikOmsetPerCabang = [];
+$grafikOmsetTotal = [];
 $grafikTrxPerCabang = [];
 $grafikTrxTotal = [];
-foreach ($grafikDates as $tgl) {
-    $totalHari = 0;
+
+foreach ($grafikDates as $key => $label) {
+    $totalHariOmset = 0;
+    $totalHariTrx = 0;
     foreach ($allBranches as $br) {
         $nama = $br['nama_cabang'];
-        $val = $trxByCabang[$nama][$tgl] ?? 0;
-        $grafikTrxPerCabang[$nama][] = $val;
-        $totalHari += $val;
+        
+        $valO = $omsetByCabang[$nama][$key] ?? 0;
+        $grafikOmsetPerCabang[$nama][] = $valO;
+        $totalHariOmset += $valO;
+        
+        $valT = $trxByCabang[$nama][$key] ?? 0;
+        $grafikTrxPerCabang[$nama][] = $valT;
+        $totalHariTrx += $valT;
     }
-    $grafikTrxTotal[] = $totalHari;
+    $grafikOmsetTotal[] = $totalHariOmset;
+    $grafikTrxTotal[] = $totalHariTrx;
 }
 
-$grafikLabels = array_map(fn($d) => date('d/m', strtotime($d)), $grafikDates);
+$grafikLabels = array_values($grafikDates);
+
 
 // CABANG YANG SEDANG BUKA
 $sqlCabangBuka = "SELECT b.id, b.nama_cabang,
@@ -274,7 +308,7 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
 
             <div class="grid-2">
                 <div class="card">
-                    <div class="card-header">Grafik Omset (<?= date('d/m', strtotime($tgl_awal)) ?> - <?= date('d/m/Y', strtotime($tgl_akhir)) ?>)</div>
+                    <div class="card-header">Grafik Omset <?= $label_group ?> (<?= date('d/m', strtotime($tgl_awal)) ?> - <?= date('d/m/Y', strtotime($tgl_akhir)) ?>)</div>
                     <div style="padding: 20px;">
                         <div id="legendOmset" class="chart-legend-wrap"></div>
                         <div class="chart-container"><canvas id="chartOmset"></canvas></div>
@@ -282,7 +316,7 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                 </div>
 
                 <div class="card">
-                    <div class="card-header">Grafik Transaksi (<?= date('d/m', strtotime($tgl_awal)) ?> - <?= date('d/m/Y', strtotime($tgl_akhir)) ?>)</div>
+                    <div class="card-header">Grafik Transaksi <?= $label_group ?> (<?= date('d/m', strtotime($tgl_awal)) ?> - <?= date('d/m/Y', strtotime($tgl_akhir)) ?>)</div>
                     <div style="padding: 20px;">
                         <div id="legendTrx" class="chart-legend-wrap"></div>
                         <div class="chart-container"><canvas id="chartTransaksi"></canvas></div>
