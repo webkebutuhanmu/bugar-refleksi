@@ -1,0 +1,24 @@
+# =====================================================
+# .htaccess - SIMPLE VERSION
+# Hide .php extension dari URL
+# =====================================================
+
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Redirect dari .php ke tanpa extension
+# KECUALI file ajax_*.php agar POST data tidak hilang
+RewriteCond %{THE_REQUEST} /([^.]+)\.php [NC]
+RewriteCond %{THE_REQUEST} !/ajax_ [NC]
+RewriteRule ^ /%1 [NC,L,R=301]
+
+# Handle request tanpa .php (internal)
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^ %{REQUEST_URI}.php [L]
+
+# Prevent directory listing
+Options -Indexes
+
+# Custom Error Pages (Optional)
+# ErrorDocument 404 /error/404.php
+# ErrorDocument 403 /error/403.php

@@ -1,0 +1,192 @@
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃                                                                  ┃
+┃              🚀 QUICK START GUIDE - BUGAR REFLEKSI 🚀           ┃
+┃                                                                  ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+📦 LANGKAH-LANGKAH CEPAT:
+
+┌─────────────────────────────────────────────────────────────────┐
+│  1. EXTRACT FILE                                                │
+└─────────────────────────────────────────────────────────────────┘
+
+   • Extract file bugar-refleksi.zip
+   • Pastikan struktur folder tetap utuh
+
+┌─────────────────────────────────────────────────────────────────┐
+│  2. PILIH METODE INSTALL                                        │
+└─────────────────────────────────────────────────────────────────┘
+
+   METODE A - PHP Built-in Server (PALING MUDAH):
+   ──────────────────────────────────────────────
+   ① Buka Terminal/CMD
+   ② cd bugar-refleksi
+   ③ php -S localhost:8000
+   ④ Buka browser: http://localhost:8000
+   
+   ✅ Keuntungan: Tidak perlu install XAMPP
+   
+   
+   METODE B - XAMPP/WAMP:
+   ──────────────────────
+   ① Copy folder ke: C:\xampp\htdocs\
+   ② Start Apache di XAMPP
+   ③ Buka browser: http://localhost/bugar-refleksi
+   
+   ✅ Keuntungan: Lebih mirip production server
+
+┌─────────────────────────────────────────────────────────────────┐
+│  3. UPDATE KONTAK (PENTING!)                                    │
+└─────────────────────────────────────────────────────────────────┘
+
+   Edit file: config.php
+   
+   Ganti:
+   • define('CONTACT_PHONE', '+62 xxx-xxxx-xxxx');
+   • define('CONTACT_WHATSAPP', '62xxxxxxxxxx');
+   • define('CONTACT_EMAIL', 'your@email.com');
+
+┌─────────────────────────────────────────────────────────────────┐
+│  4. GANTI LOGO (OPSIONAL)                                       │
+└─────────────────────────────────────────────────────────────────┘
+
+   Replace file: BUGAR REFLEKSII.png
+   
+   Ukuran recommended: 300x100px
+   Format: PNG dengan background transparent
+
+┌─────────────────────────────────────────────────────────────────┐
+│  5. TEST WEBSITE                                                │
+└─────────────────────────────────────────────────────────────────┘
+
+   ✓ Buka di browser
+   ✓ Klik semua menu
+   ✓ Test booking form
+   ✓ Test search box
+   ✓ Test WhatsApp button
+   ✓ Coba di mobile (responsive)
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃  ⚠️  JANGAN LUPA!                                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+  □ Update nomor WhatsApp di index.php (baris 44)
+  □ Update nomor WA di footer.php jika beda
+  □ Ganti logo dengan logo asli
+  □ Test semua fitur sebelum deploy
+  □ Backup file sebelum deploy ke production
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 FILE YANG PERLU DIBACA:
+
+  1. README.md           → Dokumentasi lengkap
+  2. INSTALL.md          → Panduan instalasi detail
+  3. SUMMARY.txt         → Ringkasan project
+  4. PROJECT_STRUCTURE.md → Struktur file detail
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 KUSTOMISASI CEPAT:
+
+┌─────────────────────────────────────────────────────────────────┐
+│  GANTI WARNA UTAMA                                              │
+└─────────────────────────────────────────────────────────────────┘
+
+  File: assets/css/style.css
+  Cari:
+    :root {
+        --red: #E63946;     ← Warna primary (tombol, hover)
+        --yellow: #FFD700;  ← Warna accent (highlight)
+    }
+
+┌─────────────────────────────────────────────────────────────────┐
+│  EDIT PAKET HARGA                                               │
+└─────────────────────────────────────────────────────────────────┘
+
+  File: includes/paket.php
+  
+  • Tambah paket: Copy paste satu <div class="price-card">
+  • Edit harga: Ganti angka di <div class="price-amount">
+  • Edit layanan: Edit list di <ul class="price-features">
+
+┌─────────────────────────────────────────────────────────────────┐
+│  TAMBAH CABANG BARU                                             │
+└─────────────────────────────────────────────────────────────────┘
+
+  File: includes/cabang.php
+  
+  Copy paste:
+    <div class="branch-card">
+        <div class="branch-number">13</div>
+        <h3 class="branch-name">Nama Cabang Baru</h3>
+        <p class="branch-address">Alamat Lengkap</p>
+    </div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🐛 TROUBLESHOOTING CEPAT:
+
+❌ ERROR: "Page not found"
+   ✅ Solusi: Cek path folder. Harus di root folder saat run php -S
+
+❌ ERROR: CSS tidak muncul
+   ✅ Solusi: Cek path di index.php. Pastikan benar:
+      <link href="assets/css/style.css">
+
+❌ ERROR: WhatsApp tidak buka
+   ✅ Solusi: Update nomor di index.php. Format: 628xxxxxxxxxx
+
+❌ Tampilan rusak di mobile
+   ✅ Solusi: Clear cache browser. Refresh dengan Ctrl+F5
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 TIPS PROFESIONAL:
+
+  1. DEVELOPMENT vs PRODUCTION
+     Development: Gunakan localhost
+     Production: Upload ke hosting + domain
+  
+  2. BACKUP RUTIN
+     Backup semua file setiap minggu
+     Simpan di cloud (Google Drive/Dropbox)
+  
+  3. UPDATE BERKALA
+     Update PHP ke versi terbaru
+     Update content secara rutin
+     Monitor performance
+  
+  4. SECURITY
+     Enable SSL/HTTPS di production
+     Set proper file permissions (755/644)
+     Update password secara berkala
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 LANGKAH SELANJUTNYA:
+
+  ① Test di localhost sampai sempurna
+  ② Update semua konten (nomor, email, logo)
+  ③ Test di mobile & desktop
+  ④ Deploy ke hosting
+  ⑤ Setup domain & SSL
+  ⑥ Monitor & maintenance
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📞 BUTUH BANTUAN?
+
+  📖 Baca dokumentasi lengkap di README.md
+  💬 Ada masalah? Cek INSTALL.md (troubleshooting)
+  📧 Email: info@bugarrefleksi.com
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                   ✨ SELAMAT MENCOBA! ✨
+                   
+            Semoga Bugar Refleksi semakin sukses! 🎉
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Version: 1.0.0 | Date: February 08, 2026

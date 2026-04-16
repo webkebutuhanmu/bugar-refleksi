@@ -1,0 +1,1 @@
+<?php header("Location: auth/login_system.php"); exit; ?>
