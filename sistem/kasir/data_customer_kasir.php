@@ -282,19 +282,29 @@ $customers = $stmt->fetchAll();
     })();
 
     // Sidebar Minimize Logic
-    function toggleSidebar() {
-        const sb = document.getElementById('sidebar');
+   function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    
+    // Deteksi apakah ini tampilan mobile (lebar layar <= 992px sesuai CSS Anda)
+    if (window.innerWidth <= 992) {
+        // Mode Mobile: Toggle class 'active' untuk memunculkan sidebar dari kiri
+        sb.classList.toggle('active');
+    } else {
+        // Mode Desktop: Toggle class 'collapsed' untuk mengecilkan/membesarkan sidebar
         sb.classList.toggle('collapsed');
+        
         const btnText = document.querySelector('.sidebar-toggle-btn .menu-text');
         const btnAbbr = document.querySelector('.sidebar-toggle-btn .menu-abbr');
-        if (sb.classList.contains('collapsed')) { 
-            btnText.style.display = 'none'; 
-            btnAbbr.style.display = 'inline'; 
-        } else { 
-            btnText.style.display = 'inline'; 
-            btnAbbr.style.display = 'none'; 
+        
+        if (sb.classList.contains('collapsed')) {
+            btnText.style.display = 'none';
+            btnAbbr.style.display = 'inline';
+        } else {
+            btnText.style.display = 'inline';
+            btnAbbr.style.display = 'none';
         }
     }
+}
     </script>
 </body>
 </html>
