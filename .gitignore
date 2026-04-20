@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# PHP
+composer.lock
+vendor/
+
+# Node
+node_modules/
+npm-debug.log
+
+# Uploads dan temporary files
+sistem/assets/uploads/*
+!sistem/assets/uploads/.gitkeep
+sistem/uploads/*
+!sistem/uploads/.gitkeep
+
+# Config files dengan credentials
+sistem/config/.env.local
+sistem/config/google-drive-key.json
+.env
+.env.local
+
+# Logs
+*.log
+
+# Backups
+*.bak
+*.backup
+*.sql.backup
