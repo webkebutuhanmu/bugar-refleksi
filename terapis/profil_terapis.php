@@ -1,10 +1,15 @@
 <?php
 session_start();
-require_once '../config/database.php';
+require_once '../sistem/config/database.php';
 
 if (!isset($_SESSION['role']) || $_SESSION['role'] != 'terapis') { 
-    header("Location: ../auth/login_system.php"); exit; 
+    header("Location: login.php"); exit; 
 }
+
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Cache-Control: post-check=0, pre-check=0', false);
+header('Pragma: no-cache');
+header('Expires: 0');
 
 $id_user = $_SESSION['user_id'];
 $pesan = "";
@@ -27,7 +32,7 @@ if (isset($_POST['update_profil'])) {
             $params = [$username_baru, $no_hp_baru];
 
             if (!empty($_FILES['foto']['name'])) {
-                $target_dir = "../assets/uploads/";
+                $target_dir = "../sistem/assets/uploads/";
                 if (!is_dir($target_dir)) mkdir($target_dir, 0777, true);
                 $file_ext = strtolower(pathinfo($_FILES['foto']['name'], PATHINFO_EXTENSION));
                 $new_name = "profile_" . $id_user . "_" . time() . "." . $file_ext;
@@ -92,9 +97,9 @@ $stmtMe = $pdo->prepare("SELECT u.*, b.nama_cabang FROM users u LEFT JOIN branch
 $stmtMe->execute([$id_user]);
 $me = $stmtMe->fetch();
 
-$foto_url = "../assets/default_user.png";
-if (!empty($me['foto_profil']) && file_exists("../assets/uploads/" . $me['foto_profil'])) {
-    $foto_url = "../assets/uploads/" . $me['foto_profil'];
+$foto_url = "../sistem/assets/default_user.png";
+if (!empty($me['foto_profil']) && file_exists("../sistem/assets/uploads/" . $me['foto_profil'])) {
+    $foto_url = "../sistem/assets/uploads/" . $me['foto_profil'];
 }
 
 // --- BARCODE ID ---
@@ -107,7 +112,7 @@ if (empty($barcode_id)) {
 $nama_cabang = $me['nama_cabang'] ?? 'Belum ditentukan';
 $no_hp       = $me['no_hp'] ?? '-';
 
-// --- BADGE VARIABLES ---
+// --- BADGE VARIABLES UNTUK KOMPONEN_BADGE.PHP ---
 $badge_nama     = $me['nama_lengkap'];
 $badge_role     = 'Terapis Profesional';
 $badge_id       = $barcode_id;
@@ -131,72 +136,83 @@ $badge_qr_data  = json_encode([
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profil Saya - Bugar Refleksi</title>
-    <link rel="stylesheet" href="../assets/style.css">
+    <link rel="stylesheet" href="assets/style_terapis.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { background-color: #f4f7f6; }
+        /* Gaya yang sudah disesuaikan dengan Variabel Dark Mode CSS */
         .profile-header {
-            background: white; padding: 30px; border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05); text-align: center; margin-bottom: 20px;
+            background: var(--bg-panel); padding: 30px; border-radius: 10px;
+            box-shadow: 0 4px 15px var(--shadow-color); text-align: center; margin-bottom: 20px;
+            border: 1px solid var(--border-color);
         }
         .profile-img-container { position: relative; width: 120px; height: 120px; margin: 0 auto 15px; }
         .profile-img {
             width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
-            border: 4px solid #e0f2f1; box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border: 4px solid var(--border-color); box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
         .camera-icon {
-            position: absolute; bottom: 5px; right: 5px; background: #CC1A1A;
+            position: absolute; bottom: 5px; right: 5px; background: var(--accent-red);
             color: white; width: 35px; height: 35px; border-radius: 50%;
             display: flex; align-items: center; justify-content: center;
-            cursor: pointer; border: 2px solid white;
+            cursor: pointer; border: 2px solid var(--bg-panel);
         }
         .section-title {
-            color: #1a1a1a; border-bottom: 2px solid #eee; padding-bottom: 10px;
-            margin-bottom: 20px; font-size: 18px;
+            color: var(--text-dark); border-bottom: 2px dashed var(--border-color); 
+            padding-bottom: 10px; margin-bottom: 20px; font-size: 18px;
+            font-family: 'Playfair Display', serif;
         }
-        .alert { padding: 15px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }
-        .alert-success { background: #d4edda; color: #155724; }
-        .alert-danger { background: #f8d7da; color: #721c24; }
-        .alert-warning { background: #fff3cd; color: #856404; }
+        .alert { padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
+        .alert-success { background: rgba(39, 174, 96, 0.15); color: #27ae60; border: 1px solid rgba(39,174,96,0.3); }
+        .alert-danger { background: rgba(231, 76, 60, 0.15); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); }
+        .alert-warning { background: rgba(243, 156, 18, 0.15); color: #f39c12; border: 1px solid rgba(243,156,18,0.3); }
+        
+        .form-label { font-weight: bold; font-size: 13px; color: var(--text-muted); display: block; margin-bottom: 5px; }
+
         @media print {
-            .sidebar, .topbar, .card, #editSection { display: none !important; }
+            .sidebar, .topbar, .card, #editSection, .alert { display: none !important; }
             body { background: white !important; }
             .id-card-section { display: block !important; }
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
     </style>
 </head>
 <body>
     <div class="container-layout">
-        <div class="sidebar">
-            <div class="sidebar-header"><h2>&#128134; TERAPIS PANEL</h2></div>
+        
+        <div class="sidebar no-print" id="sidebar">
+            <div class="sidebar-header"><h2>💆 TERAPIS PANEL</h2></div>
             <div class="sidebar-menu">
-                <a href="dashboard_terapis.php" class="menu-item"><i>&#128202;</i> Dashboard</a>
-                <a href="absensi_terapis.php" class="menu-item"><i>&#128203;</i> Absensi</a>
-                <a href="riwayat_pendapatan.php" class="menu-item"><i>&#128176;</i> Riwayat Omset</a>
-                <a href="profil_terapis.php" class="menu-item active"><i>&#128100;</i> Profil Saya</a>
+                <a href="dashboard_terapis.php" class="menu-item"><i>📊</i> Dashboard</a>
+                <a href="absensi_terapis.php" class="menu-item"><i>📋</i> Absensi</a>
+                <a href="riwayat_pendapatan.php" class="menu-item"><i>💰</i> Riwayat Omset</a>
+                <a href="profil_terapis.php" class="menu-item active"><i>👤</i> Profil Saya</a>
                 <a href="skor_reward_terapis.php" class="menu-item"><i>⭐</i> Skor Reward</a>
-                <a href="../auth/logout_system.php" class="menu-item" style="color: #c0392b; margin-top: 50px;"><i>&#128682;</i> Logout</a>
+                <a href="logout.php" class="menu-item" style="color: var(--accent-red); margin-top: 50px;"><i>🚪</i> Logout</a>
             </div>
         </div>
 
         <div class="main-content">
-            <div class="topbar">
-                <h1>Profil Saya</h1>
+            
+            <div class="topbar no-print">
+                <div class="topbar-left">
+                    <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('active')"><i class="fas fa-bars"></i></button>
+                    <h1>Profil Saya</h1>
+                </div>
                 <div class="topbar-right">
-                    <a href="dashboard_terapis.php" class="btn btn-secondary">&#8592; Kembali ke Dashboard</a>
+                    <a href="dashboard_terapis.php" class="btn btn-secondary" style="margin-right: 10px;">&#8592; Kembali</a>
+                    <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn"><i class="fas fa-moon"></i> Dark</button>
                 </div>
             </div>
 
             <?php if($pesan): ?>
-                <div class="alert alert-<?= $tipe_pesan ?>"><?= $pesan ?></div>
+                <div class="alert alert-<?= $tipe_pesan ?> no-print"><?= $pesan ?></div>
             <?php endif; ?>
 
-            <!-- BADGE CARD -->
-            <?php include '../includes/komponen_badge.php'; ?>
+            <?php include '../sistem/includes/komponen_badge.php'; ?>
 
-            <!-- EDIT PROFIL & PASSWORD -->
-            <div id="editSection" class="grid-2" style="grid-template-columns: 1fr 1fr; gap: 20px;">
-                <div class="card">
+            <div id="editSection" class="grid-2 no-print">
+                
+                <div class="card" style="padding: 0; overflow: hidden;">
                     <form method="POST" enctype="multipart/form-data">
                         <div class="profile-header">
                             <div class="profile-img-container">
@@ -204,24 +220,31 @@ $badge_qr_data  = json_encode([
                                 <label for="inputFoto" class="camera-icon"><i class="fas fa-camera"></i></label>
                                 <input type="file" name="foto" id="inputFoto" style="display: none;" accept="image/*" onchange="previewImage(this)">
                             </div>
-                            <h2 style="margin: 0; color: #1a1a1a;"><?= htmlspecialchars($me['nama_lengkap']) ?></h2>
-                            <span class="badge" style="background: #fff8e1; color: #b38f00; padding: 5px 10px; border-radius: 15px; font-size: 12px; margin-top: 5px; display: inline-block;">Terapis Profesional</span>
+                            <h2 style="margin: 0; color: var(--text-dark);"><?= htmlspecialchars($me['nama_lengkap']) ?></h2>
+                            <span class="badge" style="background: rgba(243, 156, 18, 0.15); color: #f39c12; padding: 5px 10px; border-radius: 15px; font-size: 12px; margin-top: 5px; display: inline-block; border: 1px solid rgba(243,156,18,0.3);">
+                                Terapis Profesional
+                            </span>
                         </div>
+                        
                         <div style="padding: 0 20px 20px;">
                             <h3 class="section-title">&#9999;&#65039; Edit Biodata</h3>
+                            
                             <div class="form-group" style="margin-bottom: 15px;">
-                                <label style="font-weight: bold; font-size: 13px;">Username (Login)</label>
+                                <label class="form-label">Username (Login)</label>
                                 <input type="text" name="username" class="form-control" value="<?= htmlspecialchars($me['username']) ?>" required>
                             </div>
+                            
                             <div class="form-group" style="margin-bottom: 15px;">
-                                <label style="font-weight: bold; font-size: 13px;">Nama Lengkap</label>
-                                <input type="text" class="form-control" value="<?= htmlspecialchars($me['nama_lengkap']) ?>" readonly style="background: #eee; cursor: not-allowed;">
+                                <label class="form-label">Nama Lengkap (Terkunci)</label>
+                                <input type="text" class="form-control" value="<?= htmlspecialchars($me['nama_lengkap']) ?>" readonly style="background: var(--bg-input); opacity: 0.7; cursor: not-allowed;">
                             </div>
+                            
                             <div class="form-group" style="margin-bottom: 20px;">
-                                <label style="font-weight: bold; font-size: 13px;">No. Handphone / WhatsApp</label>
+                                <label class="form-label">No. Handphone / WhatsApp</label>
                                 <input type="text" name="no_hp" class="form-control" value="<?= htmlspecialchars($me['no_hp'] ?? '') ?>" placeholder="08xx...">
                             </div>
-                            <button type="submit" name="update_profil" class="btn btn-primary" style="width: 100%; padding: 12px; background: #CC1A1A; border: none; color: white; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                            
+                            <button type="submit" name="update_profil" style="width: 100%; padding: 12px; background: var(--accent-red); border: none; color: white; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s;">
                                 Simpan Perubahan Profil
                             </button>
                         </div>
@@ -232,30 +255,33 @@ $badge_qr_data  = json_encode([
                     <h3 class="section-title">&#128274; Ganti Password</h3>
                     <form method="POST">
                         <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="font-weight: bold; font-size: 13px;">Password Lama</label>
+                            <label class="form-label">Password Lama</label>
                             <input type="password" name="pass_lama" class="form-control" required placeholder="******">
                         </div>
                         <div class="form-group" style="margin-bottom: 15px;">
-                            <label style="font-weight: bold; font-size: 13px;">Password Baru</label>
+                            <label class="form-label">Password Baru</label>
                             <input type="password" name="pass_baru" class="form-control" required placeholder="Minimal 5 karakter">
                         </div>
                         <div class="form-group" style="margin-bottom: 20px;">
-                            <label style="font-weight: bold; font-size: 13px;">Konfirmasi Password Baru</label>
+                            <label class="form-label">Konfirmasi Password Baru</label>
                             <input type="password" name="pass_konf" class="form-control" required placeholder="Ulangi password baru">
                         </div>
-                        <button type="submit" name="ganti_password" class="btn btn-warning" style="width: 100%; padding: 12px; background: #f39c12; border: none; color: white; border-radius: 5px; font-weight: bold; cursor: pointer;">
+                        <button type="submit" name="ganti_password" style="width: 100%; padding: 12px; background: var(--accent-yellow); border: none; color: #000; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s;">
                             Update Password
                         </button>
                     </form>
-                    <div style="margin-top: 30px; background: #fff8e1; padding: 15px; border-radius: 8px; border-left: 4px solid #FFD600;">
-                        <small style="color: #856404;"><strong>Tips Keamanan:</strong><br>Gunakan password yang sulit ditebak. Jangan gunakan tanggal lahir atau nama panggilan.</small>
+                    
+                    <div style="margin-top: 30px; background: rgba(243, 156, 18, 0.1); padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent-yellow);">
+                        <small style="color: var(--text-muted);"><strong>Tips Keamanan:</strong><br>Gunakan password yang sulit ditebak. Jangan gunakan tanggal lahir atau nama panggilan.</small>
                     </div>
                 </div>
             </div>
+            
         </div>
     </div>
 
     <script>
+    // Fitur Ganti Foto
     function previewImage(input) {
         if (input.files && input.files[0]) {
             var reader = new FileReader();
@@ -263,6 +289,18 @@ $badge_qr_data  = json_encode([
             reader.readAsDataURL(input.files[0]);
         }
     }
+
+    // Fitur Dark/Light Mode Universal
+    function toggleTheme() {
+        const b = document.documentElement; const isD = b.getAttribute('data-theme') === 'dark';
+        b.setAttribute('data-theme', isD ? 'light' : 'dark'); localStorage.setItem('theme', isD ? 'light' : 'dark');
+        document.getElementById('theme-btn').innerHTML = isD ? '<i class="fas fa-moon"></i> Dark' : '<i class="fas fa-sun"></i> Light';
+    }
+    
+    document.addEventListener('DOMContentLoaded', () => {
+        const sTheme = localStorage.getItem('theme') || 'dark'; document.documentElement.setAttribute('data-theme', sTheme);
+        document.getElementById('theme-btn').innerHTML = sTheme === 'dark' ? '<i class="fas fa-sun"></i> Light' : '<i class="fas fa-moon"></i> Dark';
+    });
     </script>
 </body>
 </html>

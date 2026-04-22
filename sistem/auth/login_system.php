@@ -45,7 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 } elseif ($user['role'] == 'admin') {
                     header("Location: ../admin/dashboard_admin.php"); exit;
                 } elseif ($user['role'] == 'terapis') {
-                    header("Location: ../terapis/dashboard_terapis.php"); exit;
+                    // Hapus session yang sempat dibuat lalu tolak akses
+                    session_destroy();
+                    $error = "Akses Ditolak! Silakan login melalui Portal khusus Terapis.";
                 } elseif ($user['role'] == 'leader') {
                     if (empty($user['branch_id'])) {
                         $error = "Akun Leader belum diset ke cabang manapun. Hubungi Owner.";
@@ -623,7 +625,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 </head>
 <body>
 
-<!-- THEME TOGGLE -->
 <div class="theme-toggle">
     <span class="toggle-icon">☀️</span>
     <div class="toggle-switch" onclick="toggleTheme()" title="Toggle Dark/Light Mode"></div>
@@ -632,7 +633,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 <div class="wrapper">
 
-    <!-- ===== LEFT: BRAND PANEL ===== -->
     <div class="brand-panel">
         <div class="brand-content">
             <div class="logo-wrap">
@@ -656,7 +656,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </div>
     </div>
 
-    <!-- ===== RIGHT: FORM PANEL ===== -->
     <div class="form-panel">
         <div class="form-inner">
 

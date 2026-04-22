@@ -281,9 +281,27 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         .btn-pay.later { background: var(--accent-blue); }
         .btn-disabled { opacity: 0.5; cursor: not-allowed !important; }
         
-        /* Autocomplete */
-        .autocomplete-wrapper { position: relative; }
-        .autocomplete-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 0 0 8px 8px; max-height: 250px; overflow-y: auto; z-index: 1000; display: none; box-shadow: var(--shadow-md); }
+        /* =========================================
+           SOLUSI FIX DROPDOWN TERPOTONG 
+           ========================================= */
+        .autocomplete-wrapper { 
+            position: relative; 
+            z-index: 99999; 
+        }
+        .autocomplete-list { 
+            position: absolute; 
+            top: 100%; 
+            left: 0; 
+            right: 0; 
+            background: var(--bg-panel); 
+            border: 1px solid var(--border-color); 
+            border-radius: 0 0 8px 8px; 
+            max-height: 250px; 
+            overflow-y: auto; 
+            z-index: 99999 !important; /* Z-Index Sangat Tinggi */
+            display: none; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
         .autocomplete-list.show { display: block; }
         .autocomplete-item { padding: 12px 15px; cursor: pointer; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
         .autocomplete-item:hover, .autocomplete-item.active { background: var(--bg-input); }
@@ -304,6 +322,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
             <div class="sidebar-menu">
                 <a href="dashboard_kasir.php" class="menu-item"><span class="menu-abbr">DB</span><span class="menu-text">Dashboard</span></a>
                 <a href="input_transaksi.php" class="menu-item active"><span class="menu-abbr">IT</span><span class="menu-text">Input Transaksi</span></a>
+                <a href="transaksi_panggilan.php" class="menu-item"><span class="menu-abbr">TP</span><span class="menu-text">Transaksi Panggilan</span></a>
                 <a href="absensi_kasir.php" class="menu-item"><span class="menu-abbr">AT</span><span class="menu-text">Absensi Terapis</span></a>
                 <a href="data_terapis_hadir.php" class="menu-item"><span class="menu-abbr">DT</span><span class="menu-text">Data Terapis</span></a>
                 <a href="data_customer_kasir.php" class="menu-item"><span class="menu-abbr">DC</span><span class="menu-text">Data Customer</span></a>
@@ -352,7 +371,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                 <input type="hidden" name="skip_terapis_id" id="skipTerapisId" value="">
                 <input type="hidden" name="skip_keterangan" id="skipKeterangan" value="">
 
-                <div class="card" style="padding:20px; margin-bottom:20px;">
+                <div class="card" style="padding:20px; margin-bottom:20px; position: relative; z-index: 50;">
                     <h3 style="margin-bottom:15px; color:var(--text-dark);">1. Pilih Bed Kosong</h3>
                     <?php if (empty($beds)): ?>
                         <div style="color:var(--accent-red); font-weight:bold; font-size:13px;">Tidak ada bed kosong tersedia saat ini.</div>
@@ -368,7 +387,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                     <?php endif; ?>
                 </div>
 
-                <div class="card" style="padding:20px; margin-bottom:20px;">
+                <div class="card" style="padding:20px; margin-bottom:20px; position: relative; z-index: 100; overflow: visible !important;">
                     <h3 style="margin-bottom:15px; color:var(--text-dark);">2. Data Pelanggan</h3>
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px;">
                         <div class="form-group">
@@ -385,7 +404,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                     </div>
                 </div>
 
-                <div class="card" style="padding:20px; margin-bottom:20px;">
+                <div class="card" style="padding:20px; margin-bottom:20px; position: relative; z-index: 10;">
                     <h3 style="margin-bottom:15px; color:var(--text-dark);">3. Paket & Layanan</h3>
                     <div class="pkg-tabs">
                         <button type="button" class="pkg-tab-btn active" id="tabPaket" onclick="switchPkgTab('paket')">Paket Utama</button>
@@ -443,7 +462,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                     </div>
                 </div>
 
-                <div class="card" style="padding:20px; margin-bottom:20px;">
+                <div class="card" style="padding:20px; margin-bottom:20px; position: relative; z-index: 9;">
                     <h3 style="margin-bottom:15px; color:var(--text-dark);">4. Pilih Terapis (Giliran)</h3>
                     <div id="giliranSelectedInfo" style="display:none; background: rgba(46,204,113,0.1); border: 1px solid var(--accent-green); padding: 15px; border-radius: 8px; margin-bottom: 15px; justify-content: space-between; align-items: center;">
                         <span id="giliranSelectedText" style="color:var(--text-dark); font-weight:bold; font-size:14px;">-</span>
@@ -511,16 +530,15 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                         <div id="pinjamTerapisArea" style="display:none; margin-top:15px; background:var(--bg-input); padding:15px; border-radius:8px; border:1px solid var(--border-color);">
                             <label style="font-size:12px; font-weight:bold; color:var(--text-muted); display:block; margin-bottom:8px;">Pilih Terapis dari Cabang Lain</label>
                             <div style="display:flex; gap:10px;">
-                                <select id="selectTerapisExternal" class="form-control" style="flex:1;">
+                                <select id="selectTerapisExternal" class="form-control" style="flex:1;" onchange="pilihTerapisExternal()">
                                     <option value="">-- Memuat Terapis... --</option>
                                 </select>
-                                <button type="button" class="btn btn-primary" onclick="pilihTerapisExternal()">Gunakan</button>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="card" style="padding:20px;">
+                <div class="card" style="padding:20px; position: relative; z-index: 8;">
                     <h3 style="margin-bottom:15px; color:var(--text-dark);">5. Proses</h3>
                     <div class="payment-options">
                         <div class="payment-option" id="optPayNow" onclick="selectPaymentMode('bayar_sekarang')">
@@ -552,28 +570,28 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
     (function() { const saved = localStorage.getItem('bugar-theme'); if (saved) document.documentElement.setAttribute('data-theme', saved); })();
 
     function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
-    
-    // Deteksi apakah ini tampilan mobile (lebar layar <= 992px sesuai CSS Anda)
-    if (window.innerWidth <= 992) {
-        // Mode Mobile: Toggle class 'active' untuk memunculkan sidebar dari kiri
-        sb.classList.toggle('active');
-    } else {
-        // Mode Desktop: Toggle class 'collapsed' untuk mengecilkan/membesarkan sidebar
-        sb.classList.toggle('collapsed');
+        const sb = document.getElementById('sidebar');
         
-        const btnText = document.querySelector('.sidebar-toggle-btn .menu-text');
-        const btnAbbr = document.querySelector('.sidebar-toggle-btn .menu-abbr');
-        
-        if (sb.classList.contains('collapsed')) {
-            btnText.style.display = 'none';
-            btnAbbr.style.display = 'inline';
+        // Deteksi apakah ini tampilan mobile (lebar layar <= 992px sesuai CSS Anda)
+        if (window.innerWidth <= 992) {
+            // Mode Mobile: Toggle class 'active' untuk memunculkan sidebar dari kiri
+            sb.classList.toggle('active');
         } else {
-            btnText.style.display = 'inline';
-            btnAbbr.style.display = 'none';
+            // Mode Desktop: Toggle class 'collapsed' untuk mengecilkan/membesarkan sidebar
+            sb.classList.toggle('collapsed');
+            
+            const btnText = document.querySelector('.sidebar-toggle-btn .menu-text');
+            const btnAbbr = document.querySelector('.sidebar-toggle-btn .menu-abbr');
+            
+            if (sb.classList.contains('collapsed')) {
+                btnText.style.display = 'none';
+                btnAbbr.style.display = 'inline';
+            } else {
+                btnText.style.display = 'inline';
+                btnAbbr.style.display = 'none';
+            }
         }
     }
-}
 
     function selectBed(el, id) {
         document.querySelectorAll('.bed-item').forEach(i => i.classList.remove('selected'));
@@ -677,6 +695,9 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         rowEl.classList.add('selected-row');
         document.getElementById('giliranSelectedText').innerText = 'Terapis Terpilih: ' + nama;
         document.getElementById('giliranSelectedInfo').style.display = 'flex';
+        
+        // Reset pilihan external jika ada
+        document.getElementById('selectTerapisExternal').selectedIndex = 0;
     }
 
     function batalPilihGiliran() {
@@ -684,6 +705,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         document.getElementById('terapisIdExternal').value = '';
         document.querySelectorAll('.giliran-table tbody tr').forEach(tr => tr.classList.remove('selected-row'));
         document.getElementById('giliranSelectedInfo').style.display = 'none';
+        document.getElementById('selectTerapisExternal').selectedIndex = 0;
     }
 
     // Logic Pinjam Terapis
@@ -714,10 +736,17 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         }
     }
 
+    // Fungsi otomatis berjalan saat terapis cabang lain dipilih
     function pilihTerapisExternal() {
         const sel = document.getElementById('selectTerapisExternal');
+        if (sel.selectedIndex < 0) return;
+        
         const opt = sel.options[sel.selectedIndex];
-        if(!opt.value) return Swal.fire('Peringatan', 'Pilih terapis cabang lain terlebih dahulu!', 'warning');
+        if(!opt.value) {
+            // Jika user memilih kembali opsi kosong "-- Pilih Terapis --"
+            batalPilihGiliran();
+            return;
+        }
         
         // Set ke external
         document.getElementById('terapisIdExternal').value = opt.value;

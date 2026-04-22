@@ -3,6 +3,11 @@ require_once '../config/database.php';
 date_default_timezone_set('Asia/Jakarta');
 if ($_SESSION['role'] != 'owner') { header("Location: ../auth/login_system.php"); exit; }
 
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Cache-Control: post-check=0, pre-check=0', false);
+header('Pragma: no-cache');
+header('Expires: 0');
+
 // --- DEFAULT FILTER 7 HARI TERAKHIR ---
 $tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-d', strtotime('-6 days'));
 $tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');

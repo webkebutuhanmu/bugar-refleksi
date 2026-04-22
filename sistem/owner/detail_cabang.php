@@ -35,17 +35,53 @@ $cabang = $stmt->fetch();
 
 if (!$cabang) { header("Location: data_cabang.php"); exit; }
 
-// Total Omset Cabang (All Time)
-$stmtOmset = $pdo->prepare("SELECT SUM(total_bayar) FROM transactions WHERE branch_id = ?");
-$stmtOmset->execute([$id]);
-$totalOmset = $stmtOmset->fetchColumn() ?? 0;
+// ========================================================
+// LOGIKA FILTER & PARAMETER
+// ========================================================
+$filter_type = $_GET['filter_type'] ?? 'limit'; 
+$selected_year = $_GET['tahun'] ?? date('Y');
+$selected_month = $_GET['bulan'] ?? date('m');
+$tgl_awal = $_GET['tgl_awal'] ?? '';
+$tgl_akhir = $_GET['tgl_akhir'] ?? '';
 
-// Total Transaksi
-$stmtTrx = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE branch_id = ?");
-$stmtTrx->execute([$id]);
-$totalTrx = $stmtTrx->fetchColumn();
+// Base Params untuk semua query
+$params = [':id' => $id];
+$filter_sql = "";
 
-// Kasir Aktif Hari Ini
+if ($filter_type == 'tahunan') {
+    $filter_sql = " AND YEAR(tanggal_transaksi) = :tahun"; // untuk transaksi
+    $filter_sql_ka = " AND YEAR(ka.tanggal) = :tahun";    // untuk kasir_attendance
+    $params[':tahun'] = $selected_year;
+} elseif ($filter_type == 'bulanan') {
+    $filter_sql = " AND YEAR(tanggal_transaksi) = :tahun AND MONTH(tanggal_transaksi) = :bulan";
+    $filter_sql_ka = " AND YEAR(ka.tanggal) = :tahun AND MONTH(ka.tanggal) = :bulan";
+    $params[':tahun'] = $selected_year;
+    $params[':bulan'] = $selected_month;
+} elseif ($filter_type == 'rentang') {
+    if (!empty($tgl_awal) && !empty($tgl_akhir)) {
+        $filter_sql = " AND tanggal_transaksi BETWEEN :tgl_awal AND :tgl_akhir";
+        $filter_sql_ka = " AND ka.tanggal BETWEEN :tgl_awal AND :tgl_akhir";
+        $params[':tgl_awal'] = $tgl_awal;
+        $params[':tgl_akhir'] = $tgl_akhir;
+    }
+} else {
+    // Jika 'limit' (keseluruhan), tidak ada tambahan filter tanggal
+    $filter_sql = "";
+    $filter_sql_ka = "";
+}
+
+// 1. Query Total Omset & Transaksi (MENGIKUTI FILTER)
+$sqlStats = "SELECT SUM(total_bayar) as total_omset, COUNT(*) as total_trx 
+             FROM transactions 
+             WHERE branch_id = :id" . $filter_sql;
+$stmtStats = $pdo->prepare($sqlStats);
+$stmtStats->execute($params);
+$resStats = $stmtStats->fetch();
+
+$totalOmset = $resStats['total_omset'] ?? 0;
+$totalTrx = $resStats['total_trx'] ?? 0;
+
+// 2. Kasir Aktif Hari Ini (Selalu cek waktu sekarang, tidak kena filter)
 $sqlKasirAktif = "SELECT u.nama_lengkap, ka.waktu_masuk 
                   FROM kasir_attendance ka
                   JOIN users u ON ka.kasir_id = u.id
@@ -54,15 +90,18 @@ $stmtKasirAktif = $pdo->prepare($sqlKasirAktif);
 $stmtKasirAktif->execute([$id]);
 $kasirAktif = $stmtKasirAktif->fetchAll();
 
-// Riwayat Shift
+// 3. Query Riwayat Shift (MENGIKUTI FILTER)
 $sqlRiwayat = "SELECT ka.*, u.nama_lengkap as nama_kasir, sl.catatan_tutup
                FROM kasir_attendance ka
                JOIN users u ON ka.kasir_id = u.id
                LEFT JOIN shift_logs sl ON ka.id = sl.attendance_id
-               WHERE ka.branch_id = ?
-               ORDER BY ka.waktu_masuk DESC LIMIT 50";
+               WHERE ka.branch_id = :id" . $filter_sql_ka;
+
+$sqlRiwayat .= " ORDER BY ka.waktu_masuk DESC";
+if ($filter_type == 'limit') { $sqlRiwayat .= " LIMIT 50"; }
+
 $stmtRiwayat = $pdo->prepare($sqlRiwayat);
-$stmtRiwayat->execute([$id]);
+$stmtRiwayat->execute($params);
 $riwayatShift = $stmtRiwayat->fetchAll();
 
 $pesanHapus = $_SESSION['pesan_hapus'] ?? '';
@@ -83,6 +122,10 @@ unset($_SESSION['pesan_hapus']);
         .info-table td { padding: 8px 0; font-size: 14px; border-bottom: 1px dashed var(--border-color); }
         .info-table td:first-child { color: var(--text-muted); font-weight: 600; width: 140px; }
         #mapDetail { border: 2px solid var(--border-color); z-index: 1; }
+        .filter-container { background: var(--bg-input); padding: 15px; border-radius: 8px; margin-bottom: 15px; display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 12px; font-weight: bold; color: var(--text-muted); }
+        .filter-control { padding: 8px; border-radius: 5px; border: 1px solid var(--border-color); background: var(--bg-panel); color: var(--text-dark); font-size: 13px; }
     </style>
 </head>
 <body>
@@ -128,9 +171,7 @@ unset($_SESSION['pesan_hapus']);
             </div>
 
             <?php if($pesanHapus): ?>
-            <div class="alert alert-success">
-                <?= $pesanHapus ?>
-            </div>
+                <div class="alert alert-success"><?= $pesanHapus ?></div>
             <?php endif; ?>
 
             <div class="card">
@@ -154,12 +195,17 @@ unset($_SESSION['pesan_hapus']);
                                 </td>
                             </tr>
                             <tr>
-                                <td>Total Omset Keseluruhan</td>
+                                <td>Total Omset (Filter)</td>
                                 <td><strong style="color: var(--accent-red2); font-size: 16px;">Rp <?= number_format($totalOmset, 0, ',', '.') ?></strong></td>
                             </tr>
                             <tr>
-                                <td>Total Transaksi</td>
-                                <td><strong style="color: var(--text-dark);"><?= $totalTrx ?> transaksi selesai</strong></td>
+                                <td>Total Transaksi (Filter)</td>
+                                <td><strong style="color: var(--text-dark);"><?= number_format($totalTrx, 0, ',', '.') ?> transaksi selesai</strong></td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" style="border-bottom: none; padding-top: 15px;">
+                                    <small style="color: var(--text-muted); font-style: italic;">* Data performa di atas mengikuti filter tanggal yang Anda pilih di bawah.</small>
+                                </td>
                             </tr>
                         </table>
                     </div>
@@ -170,68 +216,105 @@ unset($_SESSION['pesan_hapus']);
             </div>
 
             <div class="card" style="margin-top: 20px;">
-                <div class="card-header">Riwayat Shift & Laporan Operasional (50 Terakhir)</div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Kasir Bertugas</th>
-                                <th>Jam Buka</th>
-                                <th>Jam Tutup</th>
-                                <th>Omset Shift</th>
-                                <th>Transaksi</th>
-                                <th>Status</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if(count($riwayatShift) > 0): ?>
-                                <?php foreach($riwayatShift as $r): ?>
-                                <tr>
-                                    <td><?= date('d M Y', strtotime($r['tanggal'])) ?></td>
-                                    <td>
-                                        <strong><?= htmlspecialchars($r['nama_kasir']) ?></strong>
-                                        <?php if($r['catatan_tutup']): ?>
-                                            <br><small style="color: var(--accent-red); font-weight:bold;">Ada Catatan</small>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td><?= date('H:i', strtotime($r['waktu_masuk'])) ?></td>
-                                    <td>
-                                        <?php if($r['waktu_keluar']): ?>
-                                            <?= date('H:i', strtotime($r['waktu_keluar'])) ?>
-                                        <?php else: ?>
-                                            <span style="color: var(--text-muted);">-</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <strong style="color: var(--text-dark);">Rp <?= number_format($r['omset_shift'] ?? 0, 0, ',', '.') ?></strong>
-                                    </td>
-                                    <td><?= $r['total_transaksi_shift'] ?> trx</td>
-                                    <td>
-                                        <?php if($r['status'] == 'aktif'): ?>
-                                            <span class="badge-shift bg-open">Sedang Buka</span>
-                                        <?php else: ?>
-                                            <span class="badge-shift bg-closed">Selesai</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <div style="display:flex; gap:5px;">
-                                            <?php if($r['status'] == 'selesai'): ?>
-                                                <a href="laporan_detail_shift.php?id=<?= $r['id'] ?>" class="btn btn-primary btn-sm" target="_blank">Lihat Laporan</a>
-                                                <a href="?id=<?= $id ?>&hapus_shift=<?= $r['id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Yakin ingin menghapus shift ini? Data transaksi TIDAK akan terhapus.')">Hapus</a>
-                                            <?php else: ?>
-                                                <button class="btn btn-warning btn-sm" disabled style="opacity: 0.7; cursor: not-allowed;">Shift Live</button>
-                                            <?php endif; ?>
-                                        </div>
-                                    </td>
-                                </tr>
+                <div class="card-header">Riwayat Shift & Laporan Operasional</div>
+                
+                <div style="padding: 20px;">
+                    <form method="GET" class="filter-container">
+                        <input type="hidden" name="id" value="<?= $id ?>">
+                        <div class="filter-group">
+                            <label>Jenis Filter</label>
+                            <select name="filter_type" id="filter_type" class="filter-control" onchange="toggleFilterFields()">
+                                <option value="limit" <?= $filter_type == 'limit' ? 'selected' : '' ?>>50 Terakhir</option>
+                                <option value="tahunan" <?= $filter_type == 'tahunan' ? 'selected' : '' ?>>Tahunan</option>
+                                <option value="bulanan" <?= $filter_type == 'bulanan' ? 'selected' : '' ?>>Bulanan</option>
+                                <option value="rentang" <?= $filter_type == 'rentang' ? 'selected' : '' ?>>Rentang Tanggal</option>
+                            </select>
+                        </div>
+                        <div class="filter-group field-tahunan field-bulanan" style="display:none;">
+                            <label>Tahun</label>
+                            <select name="tahun" class="filter-control">
+                                <?php for($y=date('Y'); $y>=2024; $y--): ?>
+                                <option value="<?= $y ?>" <?= $selected_year == $y ? 'selected' : '' ?>><?= $y ?></option>
+                                <?php endfor; ?>
+                            </select>
+                        </div>
+                        <div class="filter-group field-bulanan" style="display:none;">
+                            <label>Bulan</label>
+                            <select name="bulan" class="filter-control">
+                                <?php 
+                                $months = ['01'=>'Januari','02'=>'Februari','03'=>'Maret','04'=>'April','05'=>'Mei','06'=>'Juni','07'=>'Juli','08'=>'Agustus','09'=>'September','10'=>'Oktober','11'=>'November','12'=>'Desember'];
+                                foreach($months as $m => $name):
+                                ?>
+                                <option value="<?= $m ?>" <?= $selected_month == $m ? 'selected' : '' ?>><?= $name ?></option>
                                 <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">Belum ada riwayat shift di cabang ini</td></tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
+                            </select>
+                        </div>
+                        <div class="filter-group field-rentang" style="display:none;">
+                            <label>Tgl Awal</label>
+                            <input type="date" name="tgl_awal" value="<?= $tgl_awal ?>" class="filter-control">
+                        </div>
+                        <div class="filter-group field-rentang" style="display:none;">
+                            <label>Tgl Akhir</label>
+                            <input type="date" name="tgl_akhir" value="<?= $tgl_akhir ?>" class="filter-control">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Terapkan Filter</button>
+                        <a href="detail_cabang.php?id=<?= $id ?>" class="btn btn-secondary">Reset</a>
+                    </form>
+
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Tanggal</th>
+                                    <th>Kasir Bertugas</th>
+                                    <th>Jam Buka</th>
+                                    <th>Jam Tutup</th>
+                                    <th>Omset Shift</th>
+                                    <th>Transaksi</th>
+                                    <th>Status</th>
+                                    <th>Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if(count($riwayatShift) > 0): ?>
+                                    <?php foreach($riwayatShift as $r): ?>
+                                    <tr>
+                                        <td><?= date('d M Y', strtotime($r['tanggal'])) ?></td>
+                                        <td>
+                                            <strong><?= htmlspecialchars($r['nama_kasir']) ?></strong>
+                                            <?php if($r['catatan_tutup']): ?>
+                                                <br><small style="color: var(--accent-red); font-weight:bold;">Ada Catatan</small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td><?= date('H:i', strtotime($r['waktu_masuk'])) ?></td>
+                                        <td><?= $r['waktu_keluar'] ? date('H:i', strtotime($r['waktu_keluar'])) : '-' ?></td>
+                                        <td><strong style="color: var(--text-dark);">Rp <?= number_format($r['omset_shift'] ?? 0, 0, ',', '.') ?></strong></td>
+                                        <td><?= $r['total_transaksi_shift'] ?> trx</td>
+                                        <td>
+                                            <?php if($r['status'] == 'aktif'): ?>
+                                                <span class="badge-shift bg-open">Sedang Buka</span>
+                                            <?php else: ?>
+                                                <span class="badge-shift bg-closed">Selesai</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <div style="display:flex; gap:5px;">
+                                                <?php if($r['status'] == 'selesai'): ?>
+                                                    <a href="laporan_detail_shift.php?id=<?= $r['id'] ?>" class="btn btn-primary btn-sm" target="_blank">Lihat Laporan</a>
+                                                    <a href="?id=<?= $id ?>&hapus_shift=<?= $r['id'] ?>" class="btn btn-danger btn-sm" onclick="return confirm('Yakin ingin menghapus shift ini?')">Hapus</a>
+                                                <?php else: ?>
+                                                    <button class="btn btn-warning btn-sm" disabled>Shift Live</button>
+                                                <?php endif; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                <?php else: ?>
+                                    <tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-muted);">Belum ada riwayat shift yang sesuai filter</td></tr>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -254,13 +337,21 @@ unset($_SESSION['pesan_hapus']);
         function toggleMobileMenu() { document.getElementById('sidebar').classList.toggle('active'); }
         function toggleSubmenu(el) { el.classList.toggle('active'); el.nextElementSibling.classList.toggle('open'); }
 
+        function toggleFilterFields() {
+            const type = document.getElementById('filter_type').value;
+            document.querySelectorAll('.field-tahunan, .field-bulanan, .field-rentang').forEach(el => el.style.display = 'none');
+            if(type === 'tahunan') document.querySelectorAll('.field-tahunan').forEach(el => el.style.display = 'flex');
+            else if(type === 'bulanan') document.querySelectorAll('.field-bulanan, .field-tahunan').forEach(el => el.style.display = 'flex');
+            else if(type === 'rentang') document.querySelectorAll('.field-rentang').forEach(el => el.style.display = 'flex');
+        }
+
+        document.addEventListener('DOMContentLoaded', toggleFilterFields);
+
         const lat = <?= $cabang['latitude'] ?? -6.200000 ?>;
         const lng = <?= $cabang['longitude'] ?? 106.816666 ?>;
         const map = L.map('mapDetail').setView([lat, lng], 15);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-        L.marker([lat, lng]).addTo(map)
-            .bindPopup('<strong style="font-family: \'Playfair Display\', serif; font-size: 14px;"><?= htmlspecialchars($cabang['nama_cabang']) ?></strong><br><span style="font-family:\'DM Sans\', sans-serif; font-size:12px;"><?= htmlspecialchars($cabang['alamat']) ?></span>')
-            .openPopup();
+        L.marker([lat, lng]).addTo(map).bindPopup('<strong><?= htmlspecialchars($cabang['nama_cabang']) ?></strong>').openPopup();
     </script>
 </body>
 </html>
