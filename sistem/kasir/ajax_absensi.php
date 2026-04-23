@@ -1,12 +1,12 @@
 <?php
 /**
- * ajax_absensi.php - UPDATE v2
- * 
- * UPDATE:
- * - Deteksi shift otomatis: Pagi (08:00-10:00), Malam (16:00-18:00)
+ * ajax_absensi.php - UPDATE v3 (Sinkron dengan Pengaturan Owner)
+ * * UPDATE:
+ * - Shift dan batas waktu absen sekarang otomatis membaca tabel `settings`
  * - Jika absen di luar jam shift → status terlambat, WAJIB isi alasan
  * - Data shift & status terlihat di halaman kasir
  * - Terapis hanya bisa absen di cabangnya sendiri
+ * - Fitur Absen Keluar (Pulang)
  */
 
 ob_start();
@@ -33,31 +33,39 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 header('Expires: 0');
 
-// ── Tanggal bisnis ────────────────────────────────────────────────────────────
+// ── Ambil Pengaturan dari Database ────────────────────────────────────────────
 try {
-    $s = $pdo->query("SELECT jam_mulai_hari FROM settings WHERE id=1")->fetch();
-} catch (Exception $e) { $s = null; }
-$jamMulai      = $s['jam_mulai_hari'] ?? '08:00:00';
+    $s = $pdo->query("SELECT * FROM settings WHERE id=1")->fetch();
+} catch (Exception $e) { 
+    $s = null; 
+}
+
+$jamMulai       = $s['jam_mulai_hari']    ?? '08:00:00';
+$pagi_start     = $s['shift_pagi_start']  ?? '08:00:00';
+$pagi_end       = $s['shift_pagi_end']    ?? '10:00:00';
+$malam_start    = $s['shift_malam_start'] ?? '16:00:00';
+$malam_end      = $s['shift_malam_end']   ?? '18:00:00';
+
 $jamSekarang   = date('H:i:s');
 $tanggalBisnis = ($jamSekarang < $jamMulai) ? date('Y-m-d', strtotime('-1 day')) : date('Y-m-d');
 
 /**
- * ★ DETEKSI SHIFT & STATUS KEHADIRAN
- * 
- * Shift Pagi  : jam 08:00 - 15:59 → tepat waktu jika 08:00-10:00
- * Shift Malam : jam 16:00 - 07:59 → tepat waktu jika 16:00-18:00
+ * ★ DETEKSI SHIFT & STATUS KEHADIRAN (SINKRON DENGAN PENGATURAN OWNER)
  */
-function detectShiftStatus()
+function detectShiftStatus($pagi_start, $pagi_end, $malam_start, $malam_end)
 {
-    $h = (int)date('H');
-    $m = (int)date('i');
+    $nowTime = date('H:i:s');
 
-    if ($h >= 8 && $h < 16) {
+    // Jika waktu saat ini lebih kecil dari mulainya shift malam, maka dianggap Shift Pagi
+    if ($nowTime < $malam_start) {
         $shift = 'pagi';
-        $tepat = ($h >= 8 && ($h < 10 || ($h == 10 && $m == 0)));
+        $tepat = ($nowTime >= $pagi_start && $nowTime <= $pagi_end);
+        $label = 'Pagi (' . date('H:i', strtotime($pagi_start)) . ' - ' . date('H:i', strtotime($pagi_end)) . ')';
     } else {
+        // Selebihnya masuk Shift Malam
         $shift = 'malam';
-        $tepat = ($h >= 16 && ($h < 18 || ($h == 18 && $m == 0)));
+        $tepat = ($nowTime >= $malam_start && $nowTime <= $malam_end);
+        $label = 'Malam (' . date('H:i', strtotime($malam_start)) . ' - ' . date('H:i', strtotime($malam_end)) . ')';
     }
 
     return [
@@ -65,7 +73,7 @@ function detectShiftStatus()
         'status_kehadiran' => $tepat ? 'tepat_waktu' : 'terlambat',
         'is_terlambat'     => !$tepat,
         'jam_absen'        => date('H:i'),
-        'label_shift'      => $shift === 'pagi' ? 'Pagi (08:00 - 10:00)' : 'Malam (16:00 - 18:00)'
+        'label_shift'      => $label
     ];
 }
 
@@ -145,8 +153,8 @@ try {
             $stC->execute([$terapis['id'], $tanggalBisnis, $branch_id]);
             if ($stC->fetch()) { echo json_encode(['success'=>false,'message'=>$terapis['nama_lengkap'].' sudah absen hari ini']); exit; }
 
-            // ★ DETEKSI SHIFT
-            $shiftInfo = detectShiftStatus();
+            // ★ DETEKSI SHIFT OTOMATIS BERDASARKAN DATABASE PENGATURAN OWNER
+            $shiftInfo = detectShiftStatus($pagi_start, $pagi_end, $malam_start, $malam_end);
 
             // Jika terlambat DAN belum ada alasan → kembalikan flag terlambat
             if ($shiftInfo['is_terlambat'] && empty($post_alasan)) {
@@ -218,8 +226,8 @@ try {
             $stC->execute([(int)$user_id, $tanggalBisnis, $branch_id]);
             if ($stC->fetch()) { echo json_encode(['success'=>false,'message'=>'Kamu sudah absen hari ini']); exit; }
 
-            // ★ DETEKSI SHIFT
-            $shiftInfo = detectShiftStatus();
+            // ★ DETEKSI SHIFT OTOMATIS BERDASARKAN DATABASE PENGATURAN OWNER
+            $shiftInfo = detectShiftStatus($pagi_start, $pagi_end, $malam_start, $malam_end);
 
             // Jika terlambat DAN belum ada alasan → kembalikan flag, jangan simpan
             if ($shiftInfo['is_terlambat'] && empty($post_alasan)) {
@@ -277,9 +285,9 @@ try {
             $sesi     = $stS->fetch(PDO::FETCH_ASSOC);
             $sesiOpen = ($sesi && $sesi['status'] === 'open');
 
-            // ★ Include shift data
+            // ★ Include shift data, penambahan ta.waktu_keluar 
             $stL = $pdo->prepare(
-                "SELECT ta.id, ta.terapis_id, ta.giliran, ta.waktu_absen, ta.metode_absen,
+                "SELECT ta.id, ta.terapis_id, ta.giliran, ta.waktu_absen, ta.waktu_keluar, ta.metode_absen,
                         ta.shift_type, ta.status_kehadiran, ta.alasan_terlambat,
                         u.nama_lengkap, u.foto_profil
                  FROM terapis_attendance ta
@@ -338,6 +346,24 @@ try {
                 echo json_encode(['success'=>true,'message'=>'Absensi berhasil dihapus']);
             } else {
                 echo json_encode(['success'=>false,'message'=>'Absensi tidak ditemukan']);
+            }
+            break;
+
+        // ═══════════════════════════════════════════════════════════════════════
+        case 'absen_keluar':
+            if (!$user_id || $role !== 'terapis') {
+                echo json_encode(['success' => false, 'message' => 'Sesi tidak valid']);
+                exit;
+            }
+
+            $absen_id = (int)$_POST['absen_id'];
+
+            // Update waktu keluar
+            $st = $pdo->prepare("UPDATE terapis_attendance SET waktu_keluar = NOW() WHERE id = ? AND terapis_id = ?");
+            if ($st->execute([$absen_id, $user_id])) {
+                echo json_encode(['success' => true, 'message' => 'Berhasil absen pulang. Terima kasih atas kerja kerasnya!']);
+            } else {
+                echo json_encode(['success' => false, 'message' => 'Gagal memproses absen pulang']);
             }
             break;
 

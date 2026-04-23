@@ -8,9 +8,36 @@ header('Cache-Control: post-check=0, pre-check=0', false);
 header('Pragma: no-cache');
 header('Expires: 0');
 
-// --- DEFAULT FILTER 7 HARI TERAKHIR ---
-$tgl_awal = isset($_GET['tgl_awal']) ? $_GET['tgl_awal'] : date('Y-m-d', strtotime('-6 days'));
-$tgl_akhir = isset($_GET['tgl_akhir']) ? $_GET['tgl_akhir'] : date('Y-m-d');
+// =====================================================
+// Ambil Foto Profil Owner
+// =====================================================
+$owner_id = $_SESSION['user_id'] ?? 0;
+$stmtProfil = $pdo->prepare("SELECT foto_profil FROM users WHERE id = ?");
+$stmtProfil->execute([$owner_id]);
+$dbFoto = $stmtProfil->fetchColumn();
+$foto_profil = (!empty($dbFoto) && file_exists("../uploads/profil/" . $dbFoto)) ? "../uploads/profil/" . $dbFoto : "../assets/default_user.png";
+
+// =====================================================
+// FILTER DINAMIS (UPDATE)
+// =====================================================
+$filter_type = $_GET['filter_type'] ?? '7hari';
+if ($filter_type == 'harian') {
+    $tgl_awal = date('Y-m-d');
+    $tgl_akhir = date('Y-m-d');
+} elseif ($filter_type == 'bulanan') {
+    $tgl_awal = date('Y-m-01');
+    $tgl_akhir = date('Y-m-t');
+} elseif ($filter_type == 'tahunan') {
+    $tgl_awal = date('Y-01-01');
+    $tgl_akhir = date('Y-12-31');
+} elseif ($filter_type == 'rentang') {
+    $tgl_awal = $_GET['tgl_awal'] ?? date('Y-m-d', strtotime('-6 days'));
+    $tgl_akhir = $_GET['tgl_akhir'] ?? date('Y-m-d');
+} else {
+    // default 7hari
+    $tgl_awal = date('Y-m-d', strtotime('-6 days'));
+    $tgl_akhir = date('Y-m-d');
+}
 
 // Total Omset
 $sqlOmset = "SELECT SUM(total_bayar) FROM transactions WHERE tanggal_transaksi BETWEEN ? AND ?";
@@ -231,16 +258,24 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
         .chart-legend-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; color: white; cursor: pointer; user-select: none; }
         .chart-legend-btn.hidden { opacity: 0.4; }
         .chart-legend-dot { width: 10px; height: 10px; border-radius: 50%; background: white; }
+
+        /* UPDATE: STYLE DROPDOWN PROFIL */
+        .user-dropdown-wrap { position: relative; cursor: pointer; }
+        .user-dropdown-menu { display: none; position: absolute; top: 100%; right: 0; background: var(--bg-panel); min-width: 180px; box-shadow: 0 5px 15px rgba(0,0,0,0.1); border-radius: 8px; overflow: hidden; z-index: 1000; margin-top: 10px; border: 1px solid var(--border-color); }
+        .user-dropdown-menu.show { display: block; }
+        .user-dropdown-menu a { display: block; padding: 12px 15px; text-decoration: none; color: var(--text-dark); font-size: 13px; border-bottom: 1px solid var(--border-color); }
+        .user-dropdown-menu a:hover { background: rgba(0,0,0,0.05); }
     </style>
 </head>
 <body>
     <div class="container-layout">
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>BUGAR REFLEKSI</h2>
-                <small>Owner Panel</small>
-            </div>
-            <div class="sidebar-menu">
+    <div class="sidebar-header">
+        <img src="https://www.dropbox.com/scl/fi/w50ceujd91ufw5gfc7boo/logo_bugar.png?rlkey=ns2z427ahk8dj87uhfiwxj8ro&st=c5kszi61&raw=1" alt="Logo Bugar" style="width: 80px; height: auto; margin-bottom: 10px; border-radius: 8px;">
+        
+        <h2>Owner</h2>
+    </div>
+    <div class="sidebar-menu">
                 <a href="dashboard_owner.php" class="menu-item active">Dashboard</a>
                 <a href="data_cabang.php" class="menu-item">Data Cabang</a>
                 <a href="data_leader.php" class="menu-item">Data Leader</a>
@@ -259,7 +294,6 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                         <a href="pengaturan_sistem.php" class="submenu-item">Pengaturan Sistem</a>
                     </div>
                 </div>
-                <a href="../auth/logout_system.php" class="menu-item" style="color: var(--accent-red); margin-top: 30px;">Keluar Sistem</a>
             </div>
         </div>
 
@@ -269,9 +303,22 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                     <button class="mobile-toggle" onclick="toggleMobileMenu()">☰</button>
                     <h1>Dashboard</h1>
                 </div>
-                <div class="topbar-right">
-                    <span style="color: var(--text-muted); font-size:14px;">Halo, <strong style="color:var(--text-dark);"><?= htmlspecialchars($_SESSION['nama']) ?></strong></span>
+                
+                <div class="topbar-right" style="display:flex; align-items:center; gap:15px;">
                     <button class="theme-btn" onclick="toggleTheme()">Mode Layar</button>
+                    
+                    <div class="user-dropdown-wrap" onclick="toggleUserDropdown(event)">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <img src="<?= $foto_profil ?>" alt="Profil" style="width:35px; height:35px; border-radius:50%; object-fit:cover; border:2px solid var(--accent-yellow);">
+                            <div style="text-align:left; display:none; @media(min-width:768px){display:block;}">
+                                <div style="font-size:13px; font-weight:bold; color:var(--text-dark);">Halo, <?= htmlspecialchars($_SESSION['nama']) ?></div>
+                            </div>
+                        </div>
+                        <div id="userDropdown" class="user-dropdown-menu">
+                            <a href="pengaturan_akun_owner.php">Pengaturan Akun</a>
+                            <a href="../auth/logout_system.php" style="color:var(--accent-red);">Keluar Sistem</a>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -279,11 +326,21 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
                 <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap; padding: 15px 20px;">
                     <strong style="color:var(--text-dark); font-size:14px;">Periode Data:</strong>
                     <form method="GET" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-                        <input type="date" name="tgl_awal" value="<?= $tgl_awal ?>" class="form-control" style="width: auto; padding:8px;" required>
-                        <span style="color:var(--text-muted);">s/d</span>
-                        <input type="date" name="tgl_akhir" value="<?= $tgl_akhir ?>" class="form-control" style="width: auto; padding:8px;" required>
-                        <button type="submit" class="btn btn-primary">Terapkan</button>
-                        <a href="dashboard_owner.php" class="btn btn-secondary">Reset 7 Hari</a>
+                        <select name="filter_type" id="filter_type" class="form-control" style="width: auto; padding:8px;" onchange="toggleRentang()">
+                            <option value="harian" <?= $filter_type == 'harian' ? 'selected' : '' ?>>Hari Ini</option>
+                            <option value="7hari" <?= $filter_type == '7hari' ? 'selected' : '' ?>>7 Hari Terakhir</option>
+                            <option value="bulanan" <?= $filter_type == 'bulanan' ? 'selected' : '' ?>>Bulan Ini</option>
+                            <option value="tahunan" <?= $filter_type == 'tahunan' ? 'selected' : '' ?>>Tahun Ini</option>
+                            <option value="rentang" <?= $filter_type == 'rentang' ? 'selected' : '' ?>>Rentang Tanggal</option>
+                        </select>
+                        
+                        <div id="rentang_inputs" style="display: <?= $filter_type == 'rentang' ? 'flex' : 'none' ?>; gap: 10px; align-items: center;">
+                            <input type="date" name="tgl_awal" value="<?= $tgl_awal ?>" class="form-control" style="width: auto; padding:8px;">
+                            <span style="color:var(--text-muted);">s/d</span>
+                            <input type="date" name="tgl_akhir" value="<?= $tgl_akhir ?>" class="form-control" style="width: auto; padding:8px;">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Terapkan Filter</button>
                     </form>
                 </div>
             </div>
@@ -481,6 +538,32 @@ $customerAktif = $pdo->query($sqlCustomerAktif)->fetchAll();
     </div>
 
     <script>
+        // UPDATE: TRIGGER AUTO BACKUP BACKGROUND
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('auto_backup_drive.php')
+                .then(res => res.json())
+                .then(data => console.log('Sistem Auto-Backup:', data))
+                .catch(err => console.log('Backup trigger diabaikan.'));
+        });
+
+        // UPDATE: LOGIKA FILTER RENTANG TANGGAL
+        function toggleRentang() {
+            const v = document.getElementById('filter_type').value;
+            document.getElementById('rentang_inputs').style.display = (v === 'rentang') ? 'flex' : 'none';
+        }
+
+        // UPDATE: LOGIKA DROPDOWN PROFIL
+        function toggleUserDropdown(e) {
+            e.stopPropagation();
+            document.getElementById('userDropdown').classList.toggle('show');
+        }
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('userDropdown');
+            if (dropdown && dropdown.classList.contains('show') && !e.target.closest('.user-dropdown-wrap')) {
+                dropdown.classList.remove('show');
+            }
+        });
+
         // Theme Toggle Script
         function toggleTheme() {
             const html = document.documentElement;

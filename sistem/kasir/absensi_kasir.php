@@ -435,16 +435,19 @@ $izinListKasir = $stIzinKasir->fetchAll(PDO::FETCH_ASSOC);
             const container = document.getElementById('absenListContainer');
             if (data.absen_list.length === 0) { container.innerHTML = '<div class="empty-state">Belum ada terapis yang hadir</div>'; return; }
 
-            let html = '<table><thead><tr><th>Giliran</th><th>Nama Terapis</th><th>Waktu</th><th>Shift</th><th>Status</th><th>Alasan</th><th>Aksi</th></tr></thead><tbody>';
+            let html = '<table><thead><tr><th>Giliran</th><th>Nama Terapis</th><th>Waktu Masuk</th><th>Shift</th><th>Status</th><th>Alasan</th><th>Aksi</th></tr></thead><tbody>';
             data.absen_list.forEach(a => {
                 const gc = a.giliran == 1 ? 'giliran-1' : (a.giliran == 2 ? 'giliran-2' : (a.giliran == 3 ? 'giliran-3' : 'giliran-other'));
                 const stBadge = a.status_kehadiran === 'tepat_waktu' ? '<span class="badge badge-success">Tepat Waktu</span>' : '<span class="badge badge-danger">Terlambat</span>';
                 const shBadge = a.shift_type === 'pagi' ? '<span class="badge badge-primary">Pagi</span>' : '<span class="badge" style="background:#9b59b6;color:white;border-color:#9b59b6;">Malam</span>';
                 const alasan = (a.status_kehadiran === 'terlambat' && a.alasan_terlambat) ? '<small style="color:var(--accent-red);font-weight:bold;">'+escH(a.alasan_terlambat)+'</small>' : '-';
                 
+                // UPDATE: Cek apakah terapis sudah absen pulang, berikan keterangan tambahan di bawah namanya
+                const statusPulang = a.waktu_keluar ? `<div style="margin-top:4px;"><span class="badge" style="background:var(--bg-input);color:var(--text-muted);border:1px solid var(--border-color);font-size:10px;">SUDAH PULANG (${fmtTime(a.waktu_keluar)})</span></div>` : '';
+                
                 html += `<tr>
                     <td><span class="giliran-badge ${gc}">${a.giliran}</span></td>
-                    <td><strong>${escH(a.nama_lengkap)}</strong></td>
+                    <td><strong>${escH(a.nama_lengkap)}</strong>${statusPulang}</td>
                     <td>${fmtTime(a.waktu_absen)}</td>
                     <td>${shBadge}</td>
                     <td>${stBadge}</td>

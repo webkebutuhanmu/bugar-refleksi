@@ -131,11 +131,12 @@ unset($_SESSION['pesan_hapus']);
 <body>
     <div class="container-layout">
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h2>BUGAR REFLEKSI</h2>
-                <small>Owner Panel</small>
-            </div>
-            <div class="sidebar-menu">
+    <div class="sidebar-header">
+        <img src="https://www.dropbox.com/scl/fi/w50ceujd91ufw5gfc7boo/logo_bugar.png?rlkey=ns2z427ahk8dj87uhfiwxj8ro&st=c5kszi61&raw=1" alt="Logo Bugar" style="width: 80px; height: auto; margin-bottom: 10px; border-radius: 8px;">
+        
+        <h2>Owner</h2>
+    </div>
+    <div class="sidebar-menu">
                 <a href="dashboard_owner.php" class="menu-item">Dashboard</a>
                 <a href="data_cabang.php" class="menu-item active">Data Cabang</a>
                 <a href="data_leader.php" class="menu-item">Data Leader</a>

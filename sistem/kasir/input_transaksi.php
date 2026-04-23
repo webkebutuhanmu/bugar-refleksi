@@ -199,18 +199,20 @@ $adaTabelIzin  = $pdo->query("SHOW TABLES LIKE 'terapis_izin'")->rowCount() > 0;
 $absenHariIni = []; $izinHariIniMap = [];
 
 if ($adaTabelAbsen) {
+    // UPDATE: Menambahkan pemanggilan kolom waktu_keluar dan update ORDER BY
     $sqlGiliran = "SELECT u.id, u.nama_lengkap, 
                   (SELECT COUNT(*) FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses', 'menunggu_approval', 'menunggu_pembayaran')) as is_busy, 
                   (SELECT COUNT(*) FROM terapis_loans tl JOIN transactions tlt ON tl.transaction_id = tlt.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status IN ('active', 'pending') AND tlt.status IN ('proses', 'menunggu_approval', 'menunggu_pembayaran')) as is_loaned, 
                   (SELECT COUNT(*) FROM transactions t2 WHERE t2.terapis_id = u.id AND t2.created_at >= ? AND t2.created_at < ? AND t2.status != 'batal') as kerja_hari_ini, 
                   (SELECT MAX(t3.waktu_selesai) FROM transactions t3 WHERE t3.terapis_id = u.id AND t3.created_at >= ? AND t3.created_at < ? AND t3.status IN ('selesai','proses','menunggu_pembayaran')) as last_selesai, 
-                  ta.giliran as giliran_absen, ta.waktu_absen 
+                  ta.giliran as giliran_absen, ta.waktu_absen, ta.waktu_keluar 
                   FROM users u LEFT JOIN terapis_attendance ta ON u.id = ta.terapis_id AND ta.branch_id = ? AND ta.tanggal = ? 
                   WHERE u.role = 'terapis' AND u.home_branch_id = ? 
-                  ORDER BY (ta.id IS NULL) ASC, kerja_hari_ini ASC, IFNULL(ta.giliran, 9999) ASC, last_selesai ASC, u.nama_lengkap ASC";
+                  ORDER BY (ta.id IS NULL) ASC, (ta.waktu_keluar IS NOT NULL) ASC, kerja_hari_ini ASC, IFNULL(ta.giliran, 9999) ASC, last_selesai ASC, u.nama_lengkap ASC";
     $stmtGiliran = $pdo->prepare($sqlGiliran);
     $stmtGiliran->execute([$branch_id, $start_periode, $end_periode, $start_periode, $end_periode, $branch_id, $tglBisnis, $branch_id]);
     $giliranTerapis = $stmtGiliran->fetchAll();
+    
     $stmtAbsen = $pdo->prepare("SELECT terapis_id FROM terapis_attendance WHERE branch_id = ? AND tanggal = ?");
     $stmtAbsen->execute([$branch_id, $tglBisnis]);
     foreach ($stmtAbsen->fetchAll() as $ab) { $absenHariIni[$ab['terapis_id']] = true; }
@@ -265,7 +267,8 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         .giliran-table tbody tr { border-bottom: 1px solid var(--border-color); cursor: pointer; transition: 0.2s; }
         .giliran-table tbody tr.available:hover { background: var(--bg-input); }
         .giliran-table tbody tr.selected-row { background: rgba(39,174,96,0.1) !important; border-left: 4px solid var(--accent-green); }
-        .giliran-table tbody tr.busy-row, .giliran-table tbody tr.loaned-row, .giliran-table tbody tr.izin-row, .giliran-table tbody tr.belum-absen-row { opacity: 0.5; cursor: not-allowed; background: var(--bg-input); }
+        /* UPDATE: Tambahkan class .pulang-row pada style css ini */
+        .giliran-table tbody tr.busy-row, .giliran-table tbody tr.loaned-row, .giliran-table tbody tr.izin-row, .giliran-table tbody tr.belum-absen-row, .giliran-table tbody tr.pulang-row { opacity: 0.5; cursor: not-allowed; background: var(--bg-input); }
         .giliran-no { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; color: white; background: var(--text-muted); }
         .giliran-no.top { background: var(--accent-blue); }
 
@@ -281,9 +284,6 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         .btn-pay.later { background: var(--accent-blue); }
         .btn-disabled { opacity: 0.5; cursor: not-allowed !important; }
         
-        /* =========================================
-           SOLUSI FIX DROPDOWN TERPOTONG 
-           ========================================= */
         .autocomplete-wrapper { 
             position: relative; 
             z-index: 99999; 
@@ -298,7 +298,7 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
             border-radius: 0 0 8px 8px; 
             max-height: 250px; 
             overflow-y: auto; 
-            z-index: 99999 !important; /* Z-Index Sangat Tinggi */
+            z-index: 99999 !important; 
             display: none; 
             box-shadow: 0 10px 30px rgba(0,0,0,0.3);
         }
@@ -485,11 +485,14 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                                     $isLoaned = ($gt['is_loaned'] > 0);
                                     $sudahAbsen = isset($absenHariIni[$gt['id']]);
                                     $isIzinSakit = isset($izinHariIniMap[$gt['id']]);
-                                    $isAvailable = (!$isBusy && !$isLoaned && $sudahAbsen && !$isIzinSakit);
+                                    $sudahPulang = !empty($gt['waktu_keluar']); // UPDATE: Cek apakah terapis sudah pulang
+                                    
+                                    $isAvailable = (!$isBusy && !$isLoaned && $sudahAbsen && !$isIzinSakit && !$sudahPulang);
                                     
                                     $rowClass = 'available';
                                     if ($isIzinSakit) $rowClass = 'izin-row';
                                     elseif (!$sudahAbsen) $rowClass = 'belum-absen-row';
+                                    elseif ($sudahPulang) $rowClass = 'pulang-row'; // UPDATE: Menambahkan class jika pulang
                                     elseif ($isBusy) $rowClass = 'busy-row';
                                     elseif ($isLoaned) $rowClass = 'loaned-row';
                                     
@@ -510,6 +513,8 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
                                             <span style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Tidak Hadir</span>
                                         <?php elseif (!$sudahAbsen): ?>
                                             <span style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Belum Absen</span>
+                                        <?php elseif ($sudahPulang): ?>
+                                            <span style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Sudah Pulang</span>
                                         <?php elseif ($isLoaned): ?>
                                             <span style="font-size:11px; font-weight:bold; color:var(--text-muted); text-transform:uppercase;">Dipinjam</span>
                                         <?php elseif ($isBusy): ?>
@@ -560,7 +565,6 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
     </div>
 
     <script>
-    // Theme
     function toggleTheme() {
         const html = document.documentElement;
         const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
@@ -572,12 +576,9 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
     function toggleSidebar() {
         const sb = document.getElementById('sidebar');
         
-        // Deteksi apakah ini tampilan mobile (lebar layar <= 992px sesuai CSS Anda)
         if (window.innerWidth <= 992) {
-            // Mode Mobile: Toggle class 'active' untuk memunculkan sidebar dari kiri
             sb.classList.toggle('active');
         } else {
-            // Mode Desktop: Toggle class 'collapsed' untuk mengecilkan/membesarkan sidebar
             sb.classList.toggle('collapsed');
             
             const btnText = document.querySelector('.sidebar-toggle-btn .menu-text');
@@ -617,7 +618,6 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         display.style.display = 'block';
     }
 
-    // Autocomplete Logic
     let acTimeout = null; let acIndex = -1;
     const inputNama = document.getElementById('namaPelanggan');
     const acList = document.getElementById('autocompleteList');
@@ -658,7 +658,6 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
     }
     document.addEventListener('click', e => { if (!e.target.closest('.autocomplete-wrapper')) { acList.classList.remove('show'); } });
 
-    // Giliran Terapis
     function getFirstAvailableTerapis() {
         const rows = document.querySelectorAll('.giliran-table tbody tr.available');
         if (rows.length === 0) return null;
@@ -689,14 +688,13 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
 
     function doSelectTerapis(id, nama, rowEl) {
         document.getElementById('terapisLokalHidden').value = id;
-        document.getElementById('terapisIdExternal').value = ''; // Clear external jika lokal dipilih
+        document.getElementById('terapisIdExternal').value = ''; 
         
         document.querySelectorAll('.giliran-table tbody tr').forEach(tr => tr.classList.remove('selected-row'));
         rowEl.classList.add('selected-row');
         document.getElementById('giliranSelectedText').innerText = 'Terapis Terpilih: ' + nama;
         document.getElementById('giliranSelectedInfo').style.display = 'flex';
         
-        // Reset pilihan external jika ada
         document.getElementById('selectTerapisExternal').selectedIndex = 0;
     }
 
@@ -708,7 +706,6 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         document.getElementById('selectTerapisExternal').selectedIndex = 0;
     }
 
-    // Logic Pinjam Terapis
     function togglePinjamTerapis() {
         const area = document.getElementById('pinjamTerapisArea');
         if(area.style.display === 'none') {
@@ -736,23 +733,19 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         }
     }
 
-    // Fungsi otomatis berjalan saat terapis cabang lain dipilih
     function pilihTerapisExternal() {
         const sel = document.getElementById('selectTerapisExternal');
         if (sel.selectedIndex < 0) return;
         
         const opt = sel.options[sel.selectedIndex];
         if(!opt.value) {
-            // Jika user memilih kembali opsi kosong "-- Pilih Terapis --"
             batalPilihGiliran();
             return;
         }
         
-        // Set ke external
         document.getElementById('terapisIdExternal').value = opt.value;
         document.getElementById('terapisHomeBranch').value = opt.getAttribute('data-branch');
         
-        // Hapus pilihan lokal
         document.getElementById('terapisLokalHidden').value = '';
         document.querySelectorAll('.giliran-table tbody tr').forEach(tr => tr.classList.remove('selected-row'));
         
@@ -760,7 +753,6 @@ $selected_package_id = isset($_GET['package_id']) ? intval($_GET['package_id']) 
         document.getElementById('giliranSelectedInfo').style.display = 'flex';
     }
 
-    // Payment Mode
     function selectPaymentMode(mode) {
         document.getElementById('paymentModeInput').value = mode;
         document.querySelectorAll('.payment-option').forEach(o => o.classList.remove('selected'));

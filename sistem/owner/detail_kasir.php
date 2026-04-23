@@ -6,7 +6,34 @@ date_default_timezone_set('Asia/Jakarta');
 if ($_SESSION['role'] != 'owner') { header("Location: ../auth/login_system.php"); exit; }
 
 $id = $_GET['id'] ?? 0;
+$pesan_sukses = "";
+$pesan_error = "";
 
+// ========================================================
+// LOGIKA HAPUS RIWAYAT SHIFT (Bukan Hapus Akun)
+// ========================================================
+if (isset($_GET['hapus_shift'])) {
+    $shift_id = $_GET['hapus_shift'];
+    try {
+        $pdo->beginTransaction();
+        
+        // 1. Hapus dari shift_logs terlebih dahulu (Foreign Key)
+        $pdo->prepare("DELETE FROM shift_logs WHERE attendance_id = ?")->execute([$shift_id]);
+        
+        // 2. Hapus dari kasir_attendance
+        $pdo->prepare("DELETE FROM kasir_attendance WHERE id = ?")->execute([$shift_id]);
+        
+        $pdo->commit();
+        $pesan_sukses = "Riwayat shift berhasil dihapus!";
+    } catch (Exception $e) {
+        $pdo->rollBack();
+        $pesan_error = "Gagal menghapus shift: " . $e->getMessage();
+    }
+}
+
+// ========================================================
+// AMBIL DATA KASIR
+// ========================================================
 $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? AND role = 'kasir'");
 $stmt->execute([$id]);
 $kasir = $stmt->fetch();
@@ -16,28 +43,47 @@ if (!$kasir) {
     exit;
 }
 
+// ========================================================
+// LOGIKA FILTER TANGGAL
+// ========================================================
+$tgl_awal = $_GET['tgl_awal'] ?? '';
+$tgl_akhir = $_GET['tgl_akhir'] ?? '';
+
+$filter_trx = "";
+$filter_att = "";
+$params_trx = [$id];
+$params_att = [$id];
+$label_periode = "Seumur Hidup";
+
+if ($tgl_awal != '' && $tgl_akhir != '') {
+    $filter_trx = " AND DATE(created_at) BETWEEN ? AND ?";
+    $filter_att = " AND tanggal BETWEEN ? AND ?";
+    array_push($params_trx, $tgl_awal, $tgl_akhir);
+    array_push($params_att, $tgl_awal, $tgl_akhir);
+    $label_periode = date('d/m/Y', strtotime($tgl_awal)) . " - " . date('d/m/Y', strtotime($tgl_akhir));
+}
+
 $setting = $pdo->query("SELECT jam_mulai_hari FROM settings WHERE id=1")->fetch();
 $jamMulai = $setting['jam_mulai_hari'] ?? '08:00:00';
 
-$expBusinessDate = "IF(TIME(created_at) < '$jamMulai', DATE_SUB(DATE(created_at), INTERVAL 1 DAY), DATE(created_at))";
-$expBusinessDateTrx = "IF(TIME(t.created_at) < '$jamMulai', DATE_SUB(DATE(t.created_at), INTERVAL 1 DAY), DATE(t.created_at))";
-
-$stmtOmset = $pdo->prepare("SELECT SUM(total_bayar) FROM transactions WHERE kasir_id = ?");
-$stmtOmset->execute([$id]);
+// Statistik Data
+$stmtOmset = $pdo->prepare("SELECT SUM(total_bayar) FROM transactions WHERE kasir_id = ? $filter_trx");
+$stmtOmset->execute($params_trx);
 $totalOmset = $stmtOmset->fetchColumn() ?? 0;
 
-$stmtTrx = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE kasir_id = ?");
-$stmtTrx->execute([$id]);
+$stmtTrx = $pdo->prepare("SELECT COUNT(*) FROM transactions WHERE kasir_id = ? $filter_trx");
+$stmtTrx->execute($params_trx);
 $totalTrx = $stmtTrx->fetchColumn();
 
-$stmtHari = $pdo->prepare("SELECT COUNT(DISTINCT tanggal) FROM kasir_attendance WHERE kasir_id = ?");
-$stmtHari->execute([$id]);
+$stmtHari = $pdo->prepare("SELECT COUNT(DISTINCT tanggal) FROM kasir_attendance WHERE kasir_id = ? $filter_att");
+$stmtHari->execute($params_att);
 $totalHariKerja = $stmtHari->fetchColumn();
 
 $rataOmset = $totalHariKerja > 0 ? $totalOmset / $totalHariKerja : 0;
 
+// Riwayat Kehadiran (Shift)
 $sqlKehadiran = "SELECT 
-                    ka.tanggal, ka.waktu_masuk, ka.waktu_keluar, b.nama_cabang,
+                    ka.id as shift_id, ka.tanggal, ka.waktu_masuk, ka.waktu_keluar, b.nama_cabang,
                     (SELECT COUNT(*) FROM transactions t 
                      WHERE t.kasir_id = ka.kasir_id AND t.branch_id = ka.branch_id 
                      AND t.created_at >= ka.waktu_masuk 
@@ -48,22 +94,22 @@ $sqlKehadiran = "SELECT
                      AND t.created_at <= COALESCE(ka.waktu_keluar, NOW())) as omset
                  FROM kasir_attendance ka
                  JOIN branches b ON ka.branch_id = b.id
-                 WHERE ka.kasir_id = ?
+                 WHERE ka.kasir_id = ? $filter_att
                  ORDER BY ka.waktu_masuk DESC LIMIT 30";
-
 $stmtKehadiran = $pdo->prepare($sqlKehadiran);
-$stmtKehadiran->execute([$id]);
+$stmtKehadiran->execute($params_att);
 $kehadiran = $stmtKehadiran->fetchAll();
 
+// Transaksi Terakhir
 $sqlRecentTrx = "SELECT t.*, u.nama_lengkap as nama_terapis, p.nama_paket, b.nama_cabang
                  FROM transactions t
                  LEFT JOIN users u ON t.terapis_id = u.id
                  LEFT JOIN packages p ON t.package_id = p.id
                  JOIN branches b ON t.branch_id = b.id
-                 WHERE t.kasir_id = ?
+                 WHERE t.kasir_id = ? $filter_trx
                  ORDER BY t.created_at DESC LIMIT 20";
 $stmtRecentTrx = $pdo->prepare($sqlRecentTrx);
-$stmtRecentTrx->execute([$id]);
+$stmtRecentTrx->execute($params_trx);
 $recentTrx = $stmtRecentTrx->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -73,15 +119,18 @@ $recentTrx = $stmtRecentTrx->fetchAll();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detail <?= htmlspecialchars($kasir['nama_lengkap']) ?> - Bugar Refleksi</title>
     <link rel="stylesheet" href="../assets/style_owner.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         .profile-header { background: var(--bg-panel); padding: 25px; border-radius: 12px; border: 1px solid var(--border-color); display: flex; align-items: center; gap: 20px; margin-bottom: 20px; box-shadow: 0 4px 15px var(--shadow-color); }
         .profile-avatar { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; background: var(--bg-input); border: 3px solid var(--accent-yellow); }
+        .filter-box { background: var(--bg-panel); padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid var(--border-color); display: flex; gap: 15px; align-items: center; flex-wrap: wrap; }
     </style>
 </head>
 <body>
     <div class="container-layout">
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
+                <img src="../assets/logo_bugar.png" alt="Logo Bugar" style="width: 80px; height: auto; margin-bottom: 10px; border-radius: 8px;">
                 <h2>BUGAR REFLEKSI</h2>
                 <small>Owner Panel</small>
             </div>
@@ -112,34 +161,48 @@ $recentTrx = $stmtRecentTrx->fetchAll();
             <div class="topbar">
                 <div style="display:flex; align-items:center; gap:15px;">
                     <button class="mobile-toggle" onclick="toggleMobileMenu()">☰</button>
-                    <h1>Detail Kasir</h1>
+                    <h1>Detail Performa Kasir</h1>
                 </div>
                 <div class="topbar-right">
                     <a href="data_kasir.php" class="btn btn-secondary">Kembali</a>
-                    <button class="theme-btn" onclick="toggleTheme()">Dark / Light</button>
+                    <button class="theme-btn" onclick="toggleTheme()">Mode Layar</button>
                 </div>
             </div>
 
             <div class="profile-header">
-                <?php $foto = !empty($kasir['foto_profil']) ? "../assets/uploads/".$kasir['foto_profil'] : "../assets/default_user.png"; ?>
+                <?php $foto = !empty($kasir['foto_profil']) ? "../uploads/profil/".$kasir['foto_profil'] : "../assets/default_user.png"; ?>
                 <img src="<?= $foto ?>" class="profile-avatar">
                 <div>
                     <h2 style="margin:0; font-family:'Playfair Display', serif; color:var(--text-dark);"><?= htmlspecialchars($kasir['nama_lengkap']) ?></h2>
                     <p style="margin:5px 0; color:var(--text-muted); font-size:14px;">Username: <strong style="color:var(--text-dark);"><?= htmlspecialchars($kasir['username']) ?></strong></p>
-                    <span class="badge" style="background: rgba(41, 128, 185, 0.15); color: #2980b9; border: 1px solid rgba(41, 128, 185, 0.3);">KASIR CABANG</span>
+                    <span class="badge" style="background: rgba(41, 128, 185, 0.15); color: #2980b9; border: 1px solid rgba(41, 128, 185, 0.3);">STATUS: KASIR</span>
                 </div>
             </div>
 
-            <div class="card-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            <div class="filter-box">
+                <strong style="font-size:14px; color:var(--text-dark);">Filter Periode:</strong>
+                <form method="GET" style="display:flex; gap:10px; align-items:center;">
+                    <input type="hidden" name="id" value="<?= $id ?>">
+                    <input type="date" name="tgl_awal" class="form-control" style="width:auto;" value="<?= $tgl_awal ?>">
+                    <span style="color:var(--text-muted);">s/d</span>
+                    <input type="date" name="tgl_akhir" class="form-control" style="width:auto;" value="<?= $tgl_akhir ?>">
+                    <button type="submit" class="btn btn-primary">Terapkan</button>
+                    <?php if($tgl_awal): ?>
+                        <a href="detail_kasir.php?id=<?= $id ?>" class="btn btn-secondary">Reset</a>
+                    <?php endif; ?>
+                </form>
+            </div>
+
+            <div class="card-grid">
                 <div class="stat-card">
                     <h3>Total Omset</h3>
                     <div class="value">Rp <?= number_format($totalOmset, 0, ',', '.') ?></div>
-                    <small>Seumur Hidup</small>
+                    <small><?= $label_periode ?></small>
                 </div>
                 <div class="stat-card">
                     <h3>Total Transaksi</h3>
                     <div class="value"><?= number_format($totalTrx) ?></div>
-                    <small>Transaksi Diselesaikan</small>
+                    <small>Selesai</small>
                 </div>
                 <div class="stat-card">
                     <h3>Total Shift</h3>
@@ -147,100 +210,82 @@ $recentTrx = $stmtRecentTrx->fetchAll();
                     <small>Hari Kerja</small>
                 </div>
                 <div class="stat-card">
-                    <h3>Rata-rata/Hari</h3>
+                    <h3>Rata-rata/Shift</h3>
                     <div class="value" style="color:var(--accent-red2);">Rp <?= number_format($rataOmset, 0, ',', '.') ?></div>
-                    <small>Performa Harian</small>
+                    <small>Performa Omset</small>
                 </div>
             </div>
 
             <div class="card">
-                <div class="card-header">Riwayat Shift & Omset (30 Terakhir)</div>
+                <div class="card-header">Riwayat Shift & Omset</div>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
-                                <th>Tanggal (Shift)</th>
+                                <th>Tanggal</th>
                                 <th>Cabang</th>
                                 <th>Jam Kerja</th>
-                                <th>Total Trx</th>
-                                <th>Omset Shift</th>
+                                <th>Transaksi</th>
+                                <th>Omset</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody>
                             <?php if(count($kehadiran) > 0): ?>
                                 <?php foreach($kehadiran as $h): 
-                                    $tglShift = date('d M Y', strtotime($h['tanggal']));
                                     $jamMasuk = date('H:i', strtotime($h['waktu_masuk']));
-                                    $jamKeluar = $h['waktu_keluar'] ? date('H:i', strtotime($h['waktu_keluar'])) : 'Sekarang';
+                                    $jamKeluar = $h['waktu_keluar'] ? date('H:i', strtotime($h['waktu_keluar'])) : 'Aktif';
                                 ?>
                                 <tr>
-                                    <td><strong><?= $tglShift ?></strong></td>
+                                    <td><strong><?= date('d M Y', strtotime($h['tanggal'])) ?></strong></td>
                                     <td><?= htmlspecialchars($h['nama_cabang']) ?></td>
-                                    <td><span style="color:var(--text-muted); font-weight:bold;"><?= $jamMasuk ?> - <?= $jamKeluar ?></span></td>
+                                    <td><?= $jamMasuk ?> - <?= $jamKeluar ?></td>
                                     <td><?= $h['total_trx'] ?> trx</td>
-                                    <td><strong style="color:var(--text-dark);">Rp <?= number_format($h['omset'], 0, ',', '.') ?></strong></td>
-                                </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr><td colspan="5" style="text-align:center; padding:30px; color:var(--text-muted);">Belum ada data kehadiran shift.</td></tr>
-                            <?php endif; ?>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-header">20 Transaksi Terakhir</div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Waktu</th>
-                                <th>Cabang</th>
-                                <th>Pelanggan</th>
-                                <th>Paket</th>
-                                <th>Terapis</th>
-                                <th>Total</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php if(count($recentTrx) > 0): ?>
-                                <?php foreach($recentTrx as $trx): ?>
-                                <tr>
-                                    <td><?= date('d/m H:i', strtotime($trx['created_at'])) ?></td>
-                                    <td><small style="color:var(--text-muted); font-weight:bold;"><?= htmlspecialchars($trx['nama_cabang']) ?></small></td>
-                                    <td><strong><?= htmlspecialchars($trx['nama_pelanggan']) ?></strong></td>
-                                    <td><?= htmlspecialchars($trx['nama_paket']) ?></td>
-                                    <td><?= htmlspecialchars($trx['nama_terapis']) ?></td>
-                                    <td><strong style="color:var(--text-dark);">Rp <?= number_format($trx['total_bayar'], 0, ',', '.') ?></strong></td>
+                                    <td><strong>Rp <?= number_format($h['omset'], 0, ',', '.') ?></strong></td>
                                     <td>
-                                        <?php if($trx['status'] == 'proses'): ?>
-                                            <span class="badge badge-warning">Proses</span>
-                                        <?php elseif($trx['status'] == 'selesai'): ?>
-                                            <span class="badge badge-success">Selesai</span>
-                                        <?php else: ?>
-                                            <span class="badge badge-danger">Batal</span>
-                                        <?php endif; ?>
+                                        <button class="btn btn-danger btn-sm" onclick="konfirmasiHapus(<?= $h['shift_id'] ?>, '<?= date('d/m/Y', strtotime($h['tanggal'])) ?>')">Hapus</button>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <tr><td colspan="7" style="text-align:center; padding:30px; color:var(--text-muted);">Belum ada transaksi.</td></tr>
+                                <tr><td colspan="6" style="text-align:center; padding:30px; color:var(--text-muted);">Tidak ada riwayat shift dalam periode ini.</td></tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </div>
-
         </div>
     </div>
     
     <script>
+        function konfirmasiHapus(shiftId, tgl) {
+            Swal.fire({
+                title: 'Hapus Riwayat Shift?',
+                text: "Riwayat shift tanggal " + tgl + " akan dihapus. Data laporan cabang terkait juga akan hilang otomatis!",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#e74c3c',
+                cancelButtonColor: '#95a5a6',
+                confirmButtonText: 'Ya, Hapus!',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    window.location.href = 'detail_kasir.php?id=<?= $id ?>&hapus_shift=' + shiftId + '<?= $tgl_awal ? "&tgl_awal=$tgl_awal&tgl_akhir=$tgl_akhir" : "" ?>';
+                }
+            })
+        }
+
+        <?php if($pesan_sukses): ?>
+        Swal.fire({ icon: 'success', title: 'Berhasil!', text: '<?= $pesan_sukses ?>', timer: 2000, showConfirmButton: false });
+        <?php endif; ?>
+
+        <?php if($pesan_error): ?>
+        Swal.fire({ icon: 'error', title: 'Gagal!', text: '<?= $pesan_error ?>' });
+        <?php endif; ?>
+
         function toggleTheme() {
             const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            const next = current === 'light' ? 'dark' : 'light';
+            const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
             html.setAttribute('data-theme', next);
             localStorage.setItem('bugar-theme', next);
         }

@@ -173,7 +173,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action_submit']) && $
 
         $jam_mulai_hari = $settings['jam_mulai_hari'] ?? '08:00:00';
         $tanggal_bisnis = ($jam_sekarang >= $jam_mulai_hari) ? date('Y-m-d') : date('Y-m-d', strtotime('-1 day'));
-        $total_bayar_final = $harga + $biaya_driver + $harga_admin_hotel;
+        
+        // LOGIKA FIX: total_bayar hanya harga paket (untuk omset)
+        // biaya_driver & harga_admin_hotel disimpan di kolomnya sendiri untuk Struk
+        $total_bayar_final = $harga;
 
         $sqlInsert = "INSERT INTO transactions 
                       (kasir_id, branch_id, terapis_id, package_id, bed_id,
@@ -297,11 +300,12 @@ $sqlGiliranTerapis = "SELECT u.id, u.nama_lengkap,
     (SELECT COUNT(*) FROM transactions t2 WHERE t2.terapis_id = u.id AND t2.created_at >= ? AND t2.created_at < ? AND t2.status != 'batal') as kerja_hari_ini,
     (SELECT MAX(t3.waktu_selesai) FROM transactions t3 WHERE t3.terapis_id = u.id AND t3.created_at >= ? AND t3.created_at < ? AND t3.status IN ('selesai','proses','menunggu_pembayaran')) as last_selesai,
     ta.giliran as giliran_absen,
-    ta.waktu_absen
+    ta.waktu_absen,
+    ta.waktu_keluar
     FROM users u
     LEFT JOIN terapis_attendance ta ON u.id = ta.terapis_id AND ta.branch_id = ? AND ta.tanggal = ?
     WHERE u.role = 'terapis' AND u.home_branch_id = ?
-    ORDER BY (ta.id IS NULL) ASC, kerja_hari_ini ASC, IFNULL(ta.giliran, 9999) ASC, last_selesai ASC, u.nama_lengkap ASC";
+    ORDER BY (ta.id IS NULL) ASC, (ta.waktu_keluar IS NOT NULL) ASC, kerja_hari_ini ASC, IFNULL(ta.giliran, 9999) ASC, last_selesai ASC, u.nama_lengkap ASC";
 $stmtGiliran = $pdo->prepare($sqlGiliranTerapis);
 $stmtGiliran->execute([$branch_id, $start_periode, $end_periode, $start_periode, $end_periode, $branch_id, $tglBisnis, $branch_id]);
 $giliranTerapis = $stmtGiliran->fetchAll();
@@ -337,11 +341,9 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
-        /* === TAMBAHAN FIX Z-INDEX & OVERFLOW === */
         .autocomplete-wrapper, .hotel-ac-wrapper, .alamat-wrapper { position: relative; z-index: 99999; }
         .autocomplete-list, .hotel-ac-list, .here-suggest-list { z-index: 99999 !important; }
 
-        /* === GRID RESPONSIVE MENGKUTI INPUT TRANSAKSI === */
         .grid-main { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; }
         .card-flow { display: flex; flex-direction: column; gap: 20px; }
         
@@ -395,7 +397,7 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
         .giliran-table tbody tr { border-bottom: 1px solid var(--border-color); cursor: pointer; transition: all 0.2s; }
         .giliran-table tbody tr.available:hover { background: var(--bg-input); }
         .giliran-table tbody tr.selected-row { background: rgba(39,174,96,0.1) !important; border-left: 4px solid var(--accent-green); }
-        .giliran-table tbody tr.busy-row, .giliran-table tbody tr.loaned-row, .giliran-table tbody tr.izin-row, .giliran-table tbody tr.belum-absen-row { opacity: 0.55; cursor: not-allowed; background: var(--bg-input); }
+        .giliran-table tbody tr.busy-row, .giliran-table tbody tr.loaned-row, .giliran-table tbody tr.izin-row, .giliran-table tbody tr.belum-absen-row, .giliran-table tbody tr.pulang-row { opacity: 0.55; cursor: not-allowed; background: var(--bg-input); }
         .giliran-table tbody td { padding: 10px 12px; vertical-align: middle; }
         .giliran-no { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px; color: white; background: var(--text-muted); }
         .giliran-no.top { background: var(--accent-blue); }
@@ -464,7 +466,6 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
         #alamatPanggilan::-webkit-contacts-auto-fill-button { visibility: hidden; display: none !important; pointer-events: none; }
         #alamatPanggilan::-webkit-credentials-auto-fill-button { visibility: hidden; display: none !important; pointer-events: none; }
         
-        /* Media Queries untuk Responsivitas (Hampir identik dengan Input Transaksi) */
         @media (max-width: 992px) {
             .grid-main { grid-template-columns: 1fr; }
         }
@@ -675,9 +676,11 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
                             </div>
 
                             <div id="priceDisplay" style="display:none; background: var(--text-dark); color: white; padding: 15px 20px; border-radius: 8px; margin-top: 15px; text-align: center;">
-                                <div style="font-size: 12px; font-weight:bold; text-transform:uppercase;">Total Layanan</div>
+                                <div style="font-size: 12px; font-weight:bold; text-transform:uppercase;">Harga Paket (Uang Masuk Sistem)</div>
                                 <div id="priceAmount" style="font-size: 24px; font-weight: 800; margin-bottom: 5px;">Rp 0</div>
-                                <div id="priceDuration" style="font-size: 12px; opacity: 0.8;">0 menit</div>
+                                <div id="priceTitipan" style="font-size: 13px; color: var(--accent-yellow2); font-weight: bold; margin-bottom: 5px;">Titipan Luar (Driver/Hotel): Rp 0</div>
+                                <div id="priceStruk" style="font-size: 14px; background: rgba(255,255,255,0.2); display: inline-block; padding: 4px 10px; border-radius: 6px;">Total Tagihan Struk: Rp 0</div>
+                                <div id="priceDuration" style="font-size: 12px; opacity: 0.8; margin-top: 8px;">0 menit</div>
                             </div>
                         </div>
 
@@ -711,16 +714,18 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
                                         <?php
                                         $nomorGiliran = 1;
                                         foreach($giliranTerapis as $gt):
-                                            $isBusy     = ($gt['is_busy'] > 0);
-                                            $isLoaned   = ($gt['is_loaned'] > 0);
-                                            $kerja      = (int)$gt['kerja_hari_ini'];
-                                            $sudahAbsen = ($gt['giliran_absen'] !== null);
+                                            $isBusy      = ($gt['is_busy'] > 0);
+                                            $isLoaned    = ($gt['is_loaned'] > 0);
+                                            $kerja       = (int)$gt['kerja_hari_ini'];
+                                            $sudahAbsen  = ($gt['giliran_absen'] !== null);
                                             $isIzinSakit = isset($izinHariIniMap[$gt['id']]);
-                                            $isAvail    = (!$isBusy && !$isLoaned && $sudahAbsen && !$isIzinSakit);
+                                            $sudahPulang = !empty($gt['waktu_keluar']); // Cek apakah sudah absen keluar
+                                            $isAvail     = (!$isBusy && !$isLoaned && $sudahAbsen && !$isIzinSakit && !$sudahPulang);
                                             
-                                            $rowClass   = 'available';
+                                            $rowClass    = 'available';
                                             if ($isIzinSakit) $rowClass = 'izin-row';
                                             elseif (!$sudahAbsen) $rowClass = 'belum-absen-row';
+                                            elseif ($sudahPulang) $rowClass = 'pulang-row'; // Menambah class jika pulang
                                             elseif ($isBusy) $rowClass = 'busy-row';
                                             elseif ($isLoaned) $rowClass = 'loaned-row';
                                             
@@ -741,6 +746,8 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
                                                     <span class="giliran-badge" style="background:var(--accent-red);">SAKIT/IZIN</span>
                                                 <?php elseif (!$sudahAbsen): ?>
                                                     <span class="giliran-badge" style="background:var(--text-muted);">BELUM ABSEN</span>
+                                                <?php elseif ($sudahPulang): ?>
+                                                    <span class="giliran-badge" style="background:var(--text-muted);">SUDAH PULANG</span>
                                                 <?php elseif ($isLoaned): ?>
                                                     <span class="giliran-badge" style="background:var(--accent-red);">DIPINJAM</span>
                                                 <?php elseif ($isBusy): ?>
@@ -1102,11 +1109,7 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
             document.querySelectorAll('.pkg-card').forEach(c => c.classList.remove('pkg-selected'));
             el.classList.add('pkg-selected');
             document.getElementById('packageInput').value = id;
-            const biaya = parseInt(document.getElementById('biayaDriver').value) || 0;
-            const adminHotel = parseInt(document.getElementById('hargaAdminHotelInput').value) || 0;
-            document.getElementById('priceAmount').textContent = 'Rp ' + (parseInt(harga) + biaya + adminHotel).toLocaleString('id-ID');
-            document.getElementById('priceDuration').textContent = durasi + ' menit';
-            document.getElementById('priceDisplay').style.display = 'block';
+            updateDriverFee(); 
         }
 
         function updateDriverFee() {
@@ -1116,7 +1119,16 @@ $listHotel    = array_filter($packages, fn($p) => $p['is_paket'] == 2);
             if (!card) return;
             const biaya = parseInt(document.getElementById('biayaDriver').value) || 0;
             const adminHotel = parseInt(document.getElementById('hargaAdminHotelInput').value) || 0;
-            document.getElementById('priceAmount').textContent = 'Rp ' + (parseInt(card.dataset.harga) + biaya + adminHotel).toLocaleString('id-ID');
+            const hargaPaket = parseInt(card.dataset.harga) || 0;
+            const totalTitipan = biaya + adminHotel;
+            const grandTotal = hargaPaket + totalTitipan;
+            
+            document.getElementById('priceAmount').textContent = 'Rp ' + hargaPaket.toLocaleString('id-ID');
+            document.getElementById('priceTitipan').textContent = 'Titipan Luar (Driver/Hotel): Rp ' + totalTitipan.toLocaleString('id-ID');
+            document.getElementById('priceStruk').textContent = 'Total Cetak Struk: Rp ' + grandTotal.toLocaleString('id-ID');
+            
+            document.getElementById('priceDuration').textContent = card.dataset.durasi + ' menit';
+            document.getElementById('priceDisplay').style.display = 'block';
         }
 
         // =====================================================

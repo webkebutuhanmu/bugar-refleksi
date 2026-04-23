@@ -1,6 +1,7 @@
 <?php
 /**
  * absensi_terapis.php - FULL VERSION
+ * UPDATE: Penambahan fitur Absen Keluar (Pulang)
  */
 session_start();
 require_once '../sistem/config/database.php';
@@ -57,16 +58,19 @@ if ($branch_id) {
 }
 
 // ── Daftar hadir (include shift data) ─────────────────────────────────────────
-$sudahAbsen   = false;
-$giliranSaya  = null;
-$myShift      = null;
-$myStatus     = null;
-$absenList    = [];
-$totalTerapis = 0;
+$sudahAbsen    = false;
+$giliranSaya   = null;
+$myShift       = null;
+$myStatus      = null;
+$myAbsenId     = null;
+$myWaktuKeluar = null;
+$absenList     = [];
+$totalTerapis  = 0;
 
 if ($branch_id) {
+    // UPDATE: Penambahan select kolom id (sebagai absen_id) dan waktu_keluar
     $stL = $pdo->prepare(
-        "SELECT ta.terapis_id, ta.giliran, ta.waktu_absen, ta.metode_absen,
+        "SELECT ta.id as absen_id, ta.terapis_id, ta.giliran, ta.waktu_absen, ta.waktu_keluar, ta.metode_absen,
                 ta.shift_type, ta.status_kehadiran, ta.alasan_terlambat,
                 u.nama_lengkap, u.foto_profil
          FROM terapis_attendance ta
@@ -83,10 +87,12 @@ if ($branch_id) {
 
     foreach ($absenList as $a) {
         if ((int)$a['terapis_id'] === $terapis_id) {
-            $sudahAbsen  = true;
-            $giliranSaya = (int)$a['giliran'];
-            $myShift     = $a['shift_type'];
-            $myStatus    = $a['status_kehadiran'];
+            $sudahAbsen    = true;
+            $giliranSaya   = (int)$a['giliran'];
+            $myShift       = $a['shift_type'];
+            $myStatus      = $a['status_kehadiran'];
+            $myAbsenId     = $a['absen_id'];
+            $myWaktuKeluar = $a['waktu_keluar'];
             break;
         }
     }
@@ -108,7 +114,7 @@ if ($branch_id) {
 $riwayatAbsensi = [];
 if ($branch_id) {
     $stRiwayat = $pdo->prepare(
-        "SELECT ta.tanggal, ta.waktu_absen, ta.shift_type, ta.status_kehadiran, 
+        "SELECT ta.tanggal, ta.waktu_absen, ta.waktu_keluar, ta.shift_type, ta.status_kehadiran, 
                 ta.giliran, ta.metode_absen, ta.alasan_terlambat
          FROM terapis_attendance ta
          WHERE ta.terapis_id = ? AND ta.branch_id = ?
@@ -207,19 +213,40 @@ function fmtWkt($dt) { return $dt ? date('H:i:s', strtotime($dt)) : '-'; }
                     <?php
                     $izinDisetujui = ($izinHariIni && $izinHariIni['status'] === 'disetujui');
                     $izinPending   = ($izinHariIni && $izinHariIni['status'] === 'pending');
-                    if ($sudahAbsen) { $cls='card-done'; $ico='✅'; $txt='Kamu Sudah Absen!'; } 
-                    elseif ($izinDisetujui) { $cls='card-done'; $ico='💌'; $txt='Status: Izin/Sakit'; } 
-                    elseif ($sesiOpen) { $cls='card-open'; $ico='🟢'; $txt='Absensi Dibuka!'; } 
-                    else { $cls='card-closed'; $ico='🔴'; $txt='Absensi Belum Dibuka'; }
+                    
+                    // UPDATE LOGIKA STATUS CARD
+                    if ($sudahAbsen && empty($myWaktuKeluar)) { 
+                        $cls='card-done'; $ico='✅'; $txt='Status: AKTIF (Bekerja)'; 
+                    } elseif ($sudahAbsen && !empty($myWaktuKeluar)) {
+                        $cls='card-closed'; $ico='🏠'; $txt='Status: SUDAH PULANG'; 
+                    } elseif ($izinDisetujui) { 
+                        $cls='card-done'; $ico='💌'; $txt='Status: Izin/Sakit'; 
+                    } elseif ($sesiOpen) { 
+                        $cls='card-open'; $ico='🟢'; $txt='Absensi Dibuka!'; 
+                    } else { 
+                        $cls='card-closed'; $ico='🔴'; $txt='Absensi Belum Dibuka'; 
+                    }
                     ?>
                     <div class="absen-status-card <?= $cls ?>" style="border-top: 5px solid #3498db;">
                         <div style="font-size:40px; margin-bottom:10px;"><?= $ico ?></div>
                         <h3 style="color:var(--text-dark); margin-bottom:20px;"><?= $txt ?></h3>
                         
-                        <?php if ($sudahAbsen): ?>
-                            <div style="background:rgba(52,152,219,0.1); padding:15px; border-radius:10px; color:var(--text-dark);">Giliran Kamu: <strong><?= $giliranSaya ?></strong></div>
+                        <?php if ($sudahAbsen && empty($myWaktuKeluar)): ?>
+                            <div style="background:rgba(52,152,219,0.1); padding:15px; border-radius:10px; color:var(--text-dark); margin-bottom:15px;">
+                                Giliran Kamu: <strong><?= $giliranSaya ?></strong><br>
+                                <small>Absen Masuk: <?= date('H:i', strtotime($a['waktu_absen'])) ?></small>
+                            </div>
+                            <button class="btn-absen" style="background:#e74c3c;" onclick="absenPulang(<?= $myAbsenId ?>)">ABSEN KELUAR / PULANG</button>
+
+                        <?php elseif ($sudahAbsen && !empty($myWaktuKeluar)): ?>
+                            <div style="background:rgba(149,165,166,0.1); padding:15px; border-radius:10px; color:var(--text-dark);">
+                                Terima kasih atas kerja kerasnya hari ini!<br>
+                                <small>Waktu Pulang: <strong><?= date('H:i', strtotime($myWaktuKeluar)) ?></strong></small>
+                            </div>
+
                         <?php elseif ($sesiOpen && !$izinPending): ?>
                             <button class="btn-absen" id="btnAbsen" onclick="doAbsen()">ABSEN SEKARANG</button>
+
                         <?php else: ?>
                             <button class="btn-absen" disabled>Menunggu Kasir...</button>
                         <?php endif; ?>
@@ -277,8 +304,13 @@ function fmtWkt($dt) { return $dt ? date('H:i:s', strtotime($dt)) : '-'; }
                                     <?php endif; ?>
                                     <span class="badge-shift <?= $stCls ?>"><?= $stLbl ?></span>
                                 </div>
+                                
                                 <?php if (!empty($a['alasan_terlambat'])): ?>
                                     <div style="font-size:10px; color:#e74c3c; margin-top:5px;">Alasan: <?= htmlspecialchars($a['alasan_terlambat']) ?></div>
+                                <?php endif; ?>
+                                
+                                <?php if (!empty($a['waktu_keluar'])): ?>
+                                    <div style="font-size:10px; font-weight:bold; color:#7f8c8d; margin-top:5px;"><i class="fas fa-home"></i> Sudah Pulang (<?= date('H:i', strtotime($a['waktu_keluar'])) ?>)</div>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -318,7 +350,45 @@ function fmtWkt($dt) { return $dt ? date('H:i:s', strtotime($dt)) : '-'; }
     });
 
     // ==========================================
-    // LOGIKA ABSENSI DAN IZIN LAMA ANDA
+    // LOGIKA ABSENSI KELUAR / PULANG
+    // ==========================================
+    function absenPulang(id) {
+        Swal.fire({
+            title: 'Konfirmasi Pulang?',
+            text: "Jika sudah absen keluar, kamu tidak dapat dipilih lagi oleh kasir untuk melayani customer.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#e74c3c',
+            confirmButtonText: 'Ya, Saya Pulang',
+            cancelButtonText: 'Batal'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                var body = 'action=absen_keluar&absen_id=' + id;
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', AJAX_URL, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.withCredentials = true;
+
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState !== 4) return;
+                    if (xhr.status === 200) {
+                        var data;
+                        try { data = JSON.parse(xhr.responseText); } catch(e) { return; }
+                        if (data.success) {
+                            Swal.fire({ title: 'Berhasil!', text: data.message, icon: 'success', timer: 2500, showConfirmButton: false })
+                            .then(function() { location.reload(); });
+                        } else {
+                            Swal.fire('Gagal', data.message, 'error');
+                        }
+                    }
+                };
+                xhr.send(body);
+            }
+        });
+    }
+
+    // ==========================================
+    // LOGIKA ABSENSI DAN IZIN BAWAAN
     // ==========================================
     function doAbsen() {
         Swal.fire({

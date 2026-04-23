@@ -171,7 +171,7 @@ $sqlTerapis = "SELECT u.id, u.nama_lengkap,
     (SELECT COUNT(*) FROM terapis_loans tl JOIN transactions tlt ON tl.transaction_id = tlt.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status IN ('active', 'pending') AND tlt.status IN ('proses', 'menunggu_approval', 'menunggu_pembayaran')) as is_loaned, 
     (SELECT COUNT(*) FROM transactions t2 WHERE t2.terapis_id = u.id AND t2.created_at >= ? AND t2.created_at < ? AND t2.status != 'batal') as kerja_hari_ini, 
     (SELECT MAX(t3.waktu_selesai) FROM transactions t3 WHERE t3.terapis_id = u.id AND t3.created_at >= ? AND t3.created_at < ? AND t3.status IN ('selesai','proses','menunggu_pembayaran')) as last_selesai, 
-    ta.giliran as giliran_absen, ta.waktu_absen,
+    ta.giliran as giliran_absen, ta.waktu_absen, ta.waktu_keluar,
     (SELECT t.waktu_selesai FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses','menunggu_pembayaran') ORDER BY t.waktu_selesai DESC LIMIT 1) as waktu_selesai,
     (SELECT t.id FROM transactions t WHERE t.terapis_id = u.id AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as current_trx_id,
     (SELECT tl.to_branch_id FROM terapis_loans tl JOIN transactions t ON tl.transaction_id = t.id WHERE tl.terapis_id = u.id AND tl.from_branch_id = ? AND tl.status = 'active' AND t.status IN ('proses','menunggu_pembayaran') LIMIT 1) as dipinjam_ke,
@@ -646,6 +646,7 @@ try {
                                     <?php else: ?>
                                         <button class="panggilan-action-btn" style="background:var(--accent-green); color:white;" onclick="showPanggilanFinish(<?= $pg['id'] ?>, '<?= htmlspecialchars(addslashes($pg['nama_pelanggan'])) ?>', '<?= htmlspecialchars(addslashes($pg['nama_terapis'])) ?>', '<?= $pg['waktu_selesai'] ?>', '<?= $pg['payment_status'] ?>')">Selesai</button>
                                         <button class="panggilan-action-btn" style="background:var(--bg-input); color:var(--text-dark); border:1px solid var(--border-color);" onclick="showAddPaketModal(<?= $pg['id'] ?>)">+ Waktu</button>
+                                        <button class="panggilan-action-btn" style="background:var(--accent-blue); color:white;" onclick="cetakStruk(<?= $pg['id'] ?>)">Struk</button>
                                     <?php endif; ?>
                                 </td>
                             </tr>
@@ -725,10 +726,11 @@ try {
                             <tbody>
                                 <?php if(count($terapis) > 0): ?>
                                 <?php foreach($terapis as $t):
-                                    $isBusy     = ($t['current_trx_id'] != null);
-                                    $isDipinjam = ($t['dipinjam_ke'] != null);
+                                    $isBusy      = ($t['current_trx_id'] != null);
+                                    $isDipinjam  = ($t['dipinjam_ke'] != null);
                                     $isIzinSakit = isset($izinMapDK[$t['id']]);
-                                    $sudahAbsen = isset($t['waktu_absen']);
+                                    $sudahAbsen  = isset($t['waktu_absen']);
+                                    $sudahPulang = !empty($t['waktu_keluar']);
                                 ?>
                                 <tr>
                                     <td>
@@ -739,6 +741,8 @@ try {
                                         <?php if($isIzinSakit): ?>
                                             <?php if($izinMapDK[$t['id']]['jenis'] === 'sakit'): ?><span class="badge badge-danger">SAKIT</span>
                                             <?php else: ?><span class="badge badge-warning">IZIN</span><?php endif; ?>
+                                        <?php elseif($sudahPulang): ?>
+                                            <span class="badge" style="background:var(--bg-input); color:var(--text-muted); border: 1px solid var(--border-color);">SUDAH PULANG</span>
                                         <?php elseif(!$sudahAbsen): ?>
                                             <span class="badge" style="background:var(--bg-input); color:var(--text-muted); border: 1px solid var(--border-color);">BELUM ABSEN</span>
                                         <?php elseif($isDipinjam): ?>

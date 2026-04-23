@@ -214,22 +214,19 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
 <body>
     <div>
         <div class="receipt" id="receipt">
-            <!-- HEADER -->
             <div class="receipt-header">
-                <div class="brand">Refleksi Bugar</div>
+                <div class="brand">Bugar Refleksi</div>
                 <div class="cabang"><?= htmlspecialchars($trx['nama_cabang']) ?></div>
                 <?php if (!empty($trx['alamat_cabang'])): ?>
                 <div class="alamat"><?= htmlspecialchars($trx['alamat_cabang']) ?></div>
                 <?php endif; ?>
             </div>
 
-            <!-- NO STRUK -->
             <div class="receipt-no">
                 STRUK #<?= $no_struk ?><br>
                 <?= $tgl_bayar ?>
             </div>
 
-            <!-- DETAIL TRANSAKSI -->
             <div class="receipt-row">
                 <span class="label">Customer</span>
                 <span class="value"><?= htmlspecialchars($trx['nama_pelanggan']) ?></span>
@@ -266,8 +263,9 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
             </div>
             <?php endif; ?>
             <?php endif; ?>
+            
             <div class="receipt-row">
-                <span class="label">Paket</span>
+                <span class="label">Layanan</span>
                 <span class="value"><?= htmlspecialchars($trx['nama_paket']) ?></span>
             </div>
             <?php if (!empty($addedPakets)): ?>
@@ -278,6 +276,7 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
             </div>
             <?php endforeach; ?>
             <?php endif; ?>
+            
             <div class="receipt-row">
                 <span class="label">Durasi</span>
                 <span class="value"><?= $trx['durasi_menit'] ?> Menit</span>
@@ -296,34 +295,41 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
             </div>
             <hr class="divider-solid">
 
-            <!-- TOTAL -->
             <?php
-                $harga_paket_bersih = $trx['total_bayar'] - $trx['biaya_driver'] - $trx['harga_admin_hotel'];
-                $ada_driver  = $isPanggilan && !empty($trx['biaya_driver']) && $trx['biaya_driver'] > 0;
-                $ada_hotel   = $isPanggilan && !empty($trx['harga_admin_hotel']) && $trx['harga_admin_hotel'] > 0;
+                // FIX LOGIKA: Menarik harga paket dari database (murni omset),
+                // lalu menjumlahkannya dengan titipan Hotel & Driver menjadi Total Tagihan Customer
+                $harga_paket_sistem = floatval($trx['total_bayar']);
+                $biaya_driver       = floatval($trx['biaya_driver'] ?? 0);
+                $harga_admin_hotel  = floatval($trx['harga_admin_hotel'] ?? 0);
+                
+                $grand_total_struk  = $harga_paket_sistem + $biaya_driver + $harga_admin_hotel;
+
+                $ada_driver  = $isPanggilan && $biaya_driver > 0;
+                $ada_hotel   = $isPanggilan && $harga_admin_hotel > 0;
                 $perlu_rinci = $ada_driver || $ada_hotel;
             ?>
             <?php if ($isPanggilan && $perlu_rinci): ?>
             <div class="receipt-row">
-                <span class="label">Harga Paket</span>
-                <span class="value">Rp <?= number_format($harga_paket_bersih, 0, ',', '.') ?></span>
+                <span class="label">Biaya Paket</span>
+                <span class="value">Rp <?= number_format($harga_paket_sistem, 0, ',', '.') ?></span>
             </div>
             <?php if ($ada_hotel): ?>
             <div class="receipt-row">
                 <span class="label">Admin Hotel</span>
-                <span class="value">Rp <?= number_format($trx['harga_admin_hotel'], 0, ',', '.') ?></span>
+                <span class="value">Rp <?= number_format($harga_admin_hotel, 0, ',', '.') ?></span>
             </div>
             <?php endif; ?>
             <?php if ($ada_driver): ?>
             <div class="receipt-row">
                 <span class="label">Biaya Driver</span>
-                <span class="value">Rp <?= number_format($trx['biaya_driver'], 0, ',', '.') ?></span>
+                <span class="value">Rp <?= number_format($biaya_driver, 0, ',', '.') ?></span>
             </div>
             <?php endif; ?>
             <?php endif; ?>
+            
             <div class="total-row">
-                <span>TOTAL</span>
-                <span>Rp <?= number_format($trx['total_bayar'], 0, ',', '.') ?></span>
+                <span>TOTAL BAYAR</span>
+                <span>Rp <?= number_format($grand_total_struk, 0, ',', '.') ?></span>
             </div>
             <div class="receipt-row">
                 <span class="label">Metode</span>
@@ -331,12 +337,12 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
             </div>
             <?php if ($trx['metode_pembayaran'] === 'tunai' && !empty($trx['jumlah_bayar'])): ?>
             <div class="receipt-row">
-                <span class="label">Dibayar</span>
+                <span class="label">Uang Tunai</span>
                 <span class="value">Rp <?= number_format($trx['jumlah_bayar'], 0, ',', '.') ?></span>
             </div>
             <div class="receipt-row">
                 <span class="label">Kembalian</span>
-                <span class="value">Rp <?= number_format($trx['jumlah_bayar'] - $trx['total_bayar'], 0, ',', '.') ?></span>
+                <span class="value">Rp <?= number_format($trx['jumlah_bayar'] - $grand_total_struk, 0, ',', '.') ?></span>
             </div>
             <?php endif; ?>
 
@@ -348,7 +354,6 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
                 <?php endif; ?>
             </div>
 
-            <!-- FOOTER -->
             <div class="receipt-footer">
                 <div class="thanks">Terima Kasih!</div>
                 Semoga badan Anda segar<br>
@@ -358,7 +363,6 @@ $metode = $metode_label[$trx['metode_pembayaran']] ?? strtoupper($trx['metode_pe
             </div>
         </div>
 
-        <!-- TOMBOL PRINT (tidak ikut tercetak) -->
         <div class="print-btn-area">
             <button class="print-btn" onclick="window.print()">&#128424; Cetak Struk</button>
             <button class="close-btn" onclick="window.close()">Tutup</button>

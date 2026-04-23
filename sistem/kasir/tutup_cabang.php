@@ -21,12 +21,15 @@ $foto_profil = $stmtProfil->fetchColumn();
 $foto_profil = (!empty($foto_profil) && file_exists("../uploads/profil/" . $foto_profil)) ? "../uploads/profil/" . $foto_profil : "../assets/default_user.png";
 
 
-// --- HITUNG RINCIAN OMSET ---
+// --- HITUNG RINCIAN OMSET (FIX: PISAHKAN BIAYA DRIVER & HOTEL DARI OMSET) ---
 $sqlShift = "SELECT 
              COUNT(*) as total_transaksi,
-             COALESCE(SUM(total_bayar), 0) as omset_gross,
+             COALESCE(SUM(total_bayar - COALESCE(biaya_driver, 0) - COALESCE(harga_admin_hotel, 0)), 0) as omset_gross,
+             COALESCE(SUM(total_bayar), 0) as total_uang_masuk,
              COALESCE(SUM(omset_cabang), 0) as omset_netto,
-             COALESCE(SUM(omset_terapis), 0) as omset_terapis
+             COALESCE(SUM(omset_terapis), 0) as omset_terapis,
+             COALESCE(SUM(biaya_driver), 0) as total_biaya_driver,
+             COALESCE(SUM(harga_admin_hotel), 0) as total_admin_hotel
              FROM transactions 
              WHERE kasir_id = ? 
              AND branch_id = ? 
@@ -81,7 +84,7 @@ $stmtPending = $pdo->prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(total_bayar),
 $stmtPending->execute([$kasir_id, $branch_id, $waktu_buka]);
 $pendingPay = $stmtPending->fetch();
 
-// Detail transaksi
+// Detail transaksi (ditambahkan pemanggilan biaya_driver & harga_admin_hotel)
 $stmtTrx = $pdo->prepare("SELECT t.*, p.nama_paket, u.nama_lengkap as nama_terapis FROM transactions t JOIN packages p ON t.package_id = p.id JOIN users u ON t.terapis_id = u.id WHERE t.kasir_id = ? AND t.branch_id = ? AND t.created_at >= ? AND t.status IN ('selesai','proses','menunggu_pembayaran') ORDER BY t.created_at DESC");
 $stmtTrx->execute([$kasir_id, $branch_id, $waktu_buka]);
 $transaksi = $stmtTrx->fetchAll();
@@ -137,7 +140,7 @@ if (isset($_POST['konfirmasi_tutup'])) {
         $stmtTotalExp->execute([$attendance_id]);
         $totalPengeluaran = $stmtTotalExp->fetchColumn();
         
-        $omsetFinal = $dataShift['omset_gross'] - $totalPengeluaran;
+        $omsetFinal = $dataShift['omset_gross'] - $totalPengeluaran; // Ini sudah bersih dari Driver/Hotel
         
         try {
             $pdo->beginTransaction();
@@ -146,7 +149,7 @@ if (isset($_POST['konfirmasi_tutup'])) {
             $pdo->commit();
             
             unset($_SESSION['active_branch'], $_SESSION['session_id'], $_SESSION['attendance_id'], $_SESSION['waktu_buka']);
-            $_SESSION['pesan_tutup'] = "Shift Ditutup! Omset Kotor: Rp " . number_format($dataShift['omset_gross'], 0, ',', '.') . " | Pengeluaran: Rp " . number_format($totalPengeluaran, 0, ',', '.') . " | Omset Bersih: Rp " . number_format($omsetFinal, 0, ',', '.');
+            $_SESSION['pesan_tutup'] = "Shift Ditutup! Omset Layanan: Rp " . number_format($dataShift['omset_gross'], 0, ',', '.') . " | Pengeluaran: Rp " . number_format($totalPengeluaran, 0, ',', '.') . " | Omset Bersih Kantor: Rp " . number_format($omsetFinal, 0, ',', '.');
             header("Location: pilih_cabang.php"); exit;
         } catch (Exception $e) {
             $pdo->rollBack(); $error = "Gagal: " . $e->getMessage();
@@ -252,8 +255,12 @@ if (isset($_POST['konfirmasi_tutup'])) {
                                 <div class="val"><?= $dataShift['total_transaksi'] ?></div>
                             </div>
                             <div class="s-card">
-                                <h4>Omset Kotor</h4>
+                                <h4>Omset Layanan (Kotor)</h4>
                                 <div class="val">Rp <?= number_format($dataShift['omset_gross'], 0, ',', '.') ?></div>
+                            </div>
+                            <div class="s-card" style="border-color:var(--text-dark);">
+                                <h4>Omset Bersih Kantor</h4>
+                                <div class="val" style="color:var(--text-dark);">Rp <?= number_format($dataShift['omset_gross'] - $totalPengeluaran, 0, ',', '.') ?></div>
                             </div>
                             <div class="s-card">
                                 <h4>Jatah Kantor</h4>
@@ -264,13 +271,15 @@ if (isset($_POST['konfirmasi_tutup'])) {
                                 <div class="val" style="color:var(--accent-blue);">Rp <?= number_format($dataShift['omset_terapis'], 0, ',', '.') ?></div>
                             </div>
                             <div class="s-card">
-                                <h4>Pengeluaran</h4>
+                                <h4>Pengeluaran Kasir</h4>
                                 <div class="val" style="color:var(--accent-red);">Rp <?= number_format($totalPengeluaran, 0, ',', '.') ?></div>
                             </div>
-                            <div class="s-card">
-                                <h4>Omset Bersih</h4>
-                                <div class="val" style="color:var(--text-dark);">Rp <?= number_format($dataShift['omset_gross'] - $totalPengeluaran, 0, ',', '.') ?></div>
-                            </div>
+                        </div>
+
+                        <div style="background:var(--bg-input); border:1px dashed var(--border-color); padding:10px; border-radius:8px; margin-top:15px; text-align:center;">
+                            <span style="font-size:12px; color:var(--text-muted); font-weight:bold; text-transform:uppercase;">Titipan Pihak Luar (Non-Omset):</span>
+                            <strong style="color:#8e44ad; font-size:14px; margin-left:10px;">Rp <?= number_format($dataShift['total_biaya_driver'] + $dataShift['total_admin_hotel'], 0, ',', '.') ?></strong>
+                            <br><small style="color:var(--text-muted);">(Biaya Driver: Rp <?= number_format($dataShift['total_biaya_driver'], 0, ',', '.') ?> | Admin Hotel: Rp <?= number_format($dataShift['total_admin_hotel'], 0, ',', '.') ?>)</small>
                         </div>
                     </div>
 
@@ -299,14 +308,14 @@ if (isset($_POST['konfirmasi_tutup'])) {
                         <div class="expense-total">
                             <h4>Total Pengeluaran</h4>
                             <div class="val" id="total-expense">Rp <?= number_format($totalPengeluaran, 0, ',', '.') ?></div>
-                            <small>Mengurangi omset cabang, TIDAK mengurangi komisi terapis</small>
+                            <small>Hanya mengurangi omset kotor menjadi bersih, TIDAK mempengaruhi komisi terapis</small>
                         </div>
                     </div>
                 </div>
 
                 <div>
                     <div class="payment-breakdown">
-                        <h3 style="margin: 0 0 20px 0; color: var(--text-dark); font-size: 16px;">Rincian Metode Pembayaran</h3>
+                        <h3 style="margin: 0 0 20px 0; color: var(--text-dark); font-size: 16px;">Rincian Metode Pembayaran (Uang Masuk)</h3>
                         <div class="pay-methods-grid">
                             <div class="pay-method-card">
                                 <div class="pm-name">Tunai</div>
@@ -366,17 +375,19 @@ if (isset($_POST['konfirmasi_tutup'])) {
             </div>
 
             <div class="card" style="margin-top:20px;">
-                <div class="card-header">Detail Transaksi Shift (<?= count($transaksi) ?>)</div>
+                <div class="card-header">Detail Riwayat Transaksi Shift (<?= count($transaksi) ?> Transaksi)</div>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
                                 <th>Jam</th>
                                 <th>Shift</th>
+                                <th>Tipe</th>
                                 <th>Pelanggan</th>
-                                <th>Paket</th>
+                                <th>Paket & Rincian</th>
                                 <th>Terapis</th>
                                 <th>Metode Bayar</th>
+                                <th>Total Bayar</th>
                                 <th>Jatah Kantor</th>
                                 <th>Komisi Terapis</th>
                             </tr>
@@ -399,17 +410,31 @@ if (isset($_POST['konfirmasi_tutup'])) {
                             <tr>
                                 <td><?= date('H:i', strtotime($trx['created_at'])) ?></td>
                                 <td><span style="background:var(--bg-input); border:1px solid var(--border-color); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; color:var(--text-dark);"><?= strtoupper($trx['jenis_shift']) ?></span></td>
+                                <td>
+                                    <?php if(($trx['tipe_transaksi'] ?? 'datang') == 'panggilan'): ?>
+                                        <span style="background:rgba(41, 128, 185, 0.1); color:var(--accent-blue); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">PANGGILAN</span>
+                                    <?php else: ?>
+                                        <span style="background:rgba(39, 174, 96, 0.1); color:var(--accent-green); padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold;">DATANG</span>
+                                    <?php endif; ?>
+                                </td>
                                 <td><strong style="color:var(--text-dark);"><?= htmlspecialchars($trx['nama_pelanggan']) ?></strong></td>
                                 <td>
-                                    <?= htmlspecialchars($trx['nama_paket']) ?>
+                                    <strong style="font-size:13px;"><?= htmlspecialchars($trx['nama_paket']) ?></strong>
                                     <?php if (!empty($addedPackages[$trx['id']])): ?>
                                         <?php foreach ($addedPackages[$trx['id']] as $ap): ?>
                                         <br><span style="color:var(--text-muted); font-size:11px;">+ <?= htmlspecialchars($ap['nama_paket']) ?> (Rp <?= number_format($ap['harga'], 0, ',', '.') ?>)</span>
                                         <?php endforeach; ?>
                                     <?php endif; ?>
+                                    <?php if (!empty($trx['biaya_driver']) && $trx['biaya_driver'] > 0): ?>
+                                        <br><span style="color:var(--accent-blue); font-size:11px;">+ Biaya Driver (Rp <?= number_format($trx['biaya_driver'], 0, ',', '.') ?>)</span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($trx['harga_admin_hotel']) && $trx['harga_admin_hotel'] > 0): ?>
+                                        <br><span style="color:#8e44ad; font-size:11px;">+ Admin Hotel (Rp <?= number_format($trx['harga_admin_hotel'], 0, ',', '.') ?>)</span>
+                                    <?php endif; ?>
                                 </td>
                                 <td><?= htmlspecialchars($trx['nama_terapis']) ?></td>
                                 <td><span class="badge-metode <?= $badge_class ?>"><?= $badge_text ?></span></td>
+                                <td><strong style="color:var(--text-dark); font-size:14px;">Rp <?= number_format($trx['total_bayar'], 0, ',', '.') ?></strong></td>
                                 <td style="color: var(--accent-green); font-weight:bold;">Rp <?= number_format($trx['omset_cabang'], 0, ',', '.') ?></td>
                                 <td style="color: var(--accent-blue); font-weight:bold;">Rp <?= number_format($trx['omset_terapis'], 0, ',', '.') ?></td>
                             </tr>
@@ -417,9 +442,10 @@ if (isset($_POST['konfirmasi_tutup'])) {
                         </tbody>
                         <tfoot style="background:var(--bg-input); font-weight:bold; color:var(--text-dark);">
                             <tr>
-                                <td colspan="6" style="text-align:right; padding:15px;">TOTAL:</td>
-                                <td style="color:var(--accent-green);">Rp <?= number_format($dataShift['omset_netto'], 0, ',', '.') ?></td>
-                                <td style="color:var(--accent-blue);">Rp <?= number_format($dataShift['omset_terapis'], 0, ',', '.') ?></td>
+                                <td colspan="7" style="text-align:right; padding:15px;">TOTAL KESELURUHAN:</td>
+                                <td style="color:var(--text-dark); font-size:15px;">Rp <?= number_format($dataShift['total_uang_masuk'], 0, ',', '.') ?></td>
+                                <td style="color:var(--accent-green); font-size:15px;">Rp <?= number_format($dataShift['omset_netto'], 0, ',', '.') ?></td>
+                                <td style="color:var(--accent-blue); font-size:15px;">Rp <?= number_format($dataShift['omset_terapis'], 0, ',', '.') ?></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -479,24 +505,32 @@ if (isset($_POST['konfirmasi_tutup'])) {
     }
 
     function konfirmasiTutup() {
-        const omsetKotor = <?= $dataShift['omset_gross'] ?>;
+        const omsetKotorLayanan = <?= $dataShift['omset_gross'] ?>;
         const pengeluaran = <?= $totalPengeluaran ?>;
-        const omsetBersih = omsetKotor - pengeluaran;
+        const omsetBersih = omsetKotorLayanan - pengeluaran;
+        const totalTitipan = <?= $dataShift['total_biaya_driver'] + $dataShift['total_admin_hotel'] ?>;
         
         Swal.fire({
             title: 'Tutup Shift?',
             html: `
                 <div style="text-align:left; font-size:14px; color:var(--text-dark);">
                     <div style="display:flex; justify-content:space-between; margin:8px 0;">
-                        <span>Omset Kotor:</span> <strong>Rp ${omsetKotor.toLocaleString('id-ID')}</strong>
+                        <span>Omset Kotor (Hanya Layanan):</span> <strong>Rp ${omsetKotorLayanan.toLocaleString('id-ID')}</strong>
                     </div>
                     <div style="display:flex; justify-content:space-between; margin:8px 0; color:var(--accent-red);">
-                        <span>(-) Pengeluaran:</span> <strong>Rp ${pengeluaran.toLocaleString('id-ID')}</strong>
+                        <span>(-) Pengeluaran Kasir:</span> <strong>Rp ${pengeluaran.toLocaleString('id-ID')}</strong>
                     </div>
                     <hr style="border:1px dashed var(--border-color);">
                     <div style="display:flex; justify-content:space-between; margin:8px 0; color:var(--accent-green); font-size:16px;">
-                        <span><strong>Omset Bersih:</strong></span> <strong>Rp ${omsetBersih.toLocaleString('id-ID')}</strong>
+                        <span><strong>Omset Bersih Kantor:</strong></span> <strong>Rp ${omsetBersih.toLocaleString('id-ID')}</strong>
                     </div>
+                    
+                    <div style="background:rgba(142, 68, 173, 0.05); padding:10px; border-radius:5px; margin: 15px 0 10px 0; font-size:13px; color:#8e44ad; border: 1px dashed rgba(142, 68, 173, 0.4);">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:0;">
+                            <span>Titipan Pihak Luar (Driver/Hotel):</span> <strong>Rp ${totalTitipan.toLocaleString('id-ID')}</strong>
+                        </div>
+                    </div>
+                    
                     <hr style="border:1px dashed var(--border-color);">
                     <div style="display:flex; justify-content:space-between; margin:8px 0; color:var(--accent-green);">
                         <span>Uang Tunai:</span> <strong>Rp <?= number_format($totalTunai, 0, ',', '.') ?></strong>
