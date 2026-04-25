@@ -13,6 +13,11 @@ ob_start();
 error_reporting(0);
 ini_set('display_errors', 0);
 
+// Panggil session_start agar $_SESSION['user_id'] dan role terbaca
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $action              = trim($_POST['action']           ?? $_GET['action']           ?? '');
 $post_barcode        = trim($_POST['barcode']          ?? '');
 $post_absen_id       = (int)($_POST['absen_id']        ?? 0);
@@ -356,7 +361,8 @@ try {
                 exit;
             }
 
-            $absen_id = (int)$_POST['absen_id'];
+            // [FIX] Perbaikan sintaks yang error di sini
+            $absen_id = (int)($_POST['absen_id'] ?? 0);
 
             // Update waktu keluar
             $st = $pdo->prepare("UPDATE terapis_attendance SET waktu_keluar = NOW() WHERE id = ? AND terapis_id = ?");

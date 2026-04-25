@@ -139,13 +139,9 @@ if ($branch_id) {
     $riwayatIzin = $stRiwIzin->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// ── URL AJAX ─────────────────────────────────────────────────────────────────
-$proto     = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-$host      = $_SERVER['HTTP_HOST'];
-$scriptDir = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/');
-$parentDir = rtrim(dirname($scriptDir), '/');
-$AJAX_URL  = $proto.'://'.$host.$parentDir.'../sistem/kasir/ajax_absensi.php';
-$AJAX_IZIN_URL = $proto.'://'.$host.$parentDir.'../sistem/kasir/ajax_izin_sakit.php';
+// ── URL AJAX (Perbaikan Path Absolut) ────────────────────────────────────────
+$AJAX_URL  = '../sistem/kasir/ajax_absensi.php';
+$AJAX_IZIN_URL = '../sistem/kasir/ajax_izin_sakit.php';
 
 // ── QR Data ──────────────────────────────────────────────────────────────────
 $qr_data = json_encode([
@@ -492,7 +488,7 @@ function fmtWkt($dt) { return $dt ? date('H:i:s', strtotime($dt)) : '-'; }
         xhr.send(body);
     }
 
-    function escH(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function escH(s) { if (s == null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&quot;'); }
     
     // Auto Refresh Logic
     function refreshData() {
