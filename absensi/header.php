@@ -37,7 +37,9 @@ $x = ($role === 'supervisor') ? 'spv' : $role;
         .sidebar-menu { flex: 0 0 auto; padding: 15px 0; }
         .menu-item { padding: 14px 20px; color: #A1A1A6; text-decoration: none; display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 500; transition: all 0.2s; border-left: 4px solid transparent; }
         .menu-item:hover { background: rgba(255,255,255,0.05); color: white; border-left-color: var(--primary); padding-left: 24px; }
+        .menu-item.active { background: rgba(88,86,214,0.15); color: white; border-left-color: var(--primary); padding-left: 24px; }
         .menu-item i { width: 20px; text-align: center; }
+        .menu-divider { height: 1px; background: rgba(255,255,255,0.07); margin: 8px 20px; }
         .sidebar-footer { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); background: #151515; margin-top: auto; }
         .user-info { margin-bottom: 15px; font-size: 13px; }
         .btn-logout { background: rgba(255, 59, 48, 0.1); color: var(--danger); padding: 12px; border-radius: 12px; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 600; font-size: 14px; transition: 0.2s; border: 1px solid rgba(255, 59, 48, 0.2); cursor: pointer; }
@@ -70,21 +72,32 @@ $x = ($role === 'supervisor') ? 'spv' : $role;
     <div class="sidebar-header">BUGAR <span style="color:var(--success)">APP</span></div>
     <div class="sidebar-menu">
         <a href="dashboard_<?= $x ?>.php" class="menu-item"><i class="fas fa-border-all"></i> Dashboard</a>
-        <?php if($role !== 'owner'): ?>
+
+        <?php if($role === 'supervisor'): ?>
+            <!-- SPV punya menu absensi sendiri -->
+            <a href="absen_spv.php" class="menu-item"><i class="fas fa-fingerprint"></i> Absensi Saya</a>
+        <?php elseif($role !== 'owner'): ?>
+            <!-- Karyawan & Kasir -->
             <a href="absen_<?= $x ?>.php" class="menu-item"><i class="fas fa-fingerprint"></i> Absensi</a>
         <?php endif; ?>
+
         <a href="riwayat_<?= $x ?>.php" class="menu-item"><i class="fas fa-list-ul"></i> Riwayat & Cabang</a>
+
         <?php if($role === 'supervisor'): ?>
             <a href="approval_spv.php" class="menu-item"><i class="fas fa-check-double"></i> Approval</a>
         <?php endif; ?>
+
         <?php if($role === 'owner'): ?>
             <a href="pelanggaran_owner.php" class="menu-item"><i class="fas fa-exclamation-triangle"></i> Pelanggaran</a>
             <a href="pengaturan_owner.php" class="menu-item"><i class="fas fa-cog"></i> Pengaturan</a>
         <?php endif; ?>
+
+        <div class="menu-divider"></div>
+        <a href="profil_<?= $x ?>.php" class="menu-item"><i class="fas fa-user-circle"></i> Profil Saya</a>
     </div>
     <div class="sidebar-footer">
         <div class="user-info">
-            <div style="font-weight:700; font-size:15px;"><?= $nama ?></div>
+            <div style="font-weight:700; font-size:15px;"><?= htmlspecialchars($nama) ?></div>
             <div style="color:#A1A1A6; font-size:11px; letter-spacing:1px; margin-bottom:5px;"><?= strtoupper($role) ?></div>
             <?php if(in_array($role, ['karyawan', 'supervisor'])): ?>
                 <div style="display:inline-block; background:rgba(255, 149, 0, 0.2); color:var(--warning); padding:3px 8px; border-radius:8px; font-weight:bold; font-size:11px;"><i class="fas fa-star"></i> Skor: <?= $me['credit_score'] ?></div>
