@@ -32,6 +32,7 @@ $tgl_sekarang = date('Y-m-d');
         <table>
             <thead>
                 <tr>
+                    <th>Tanggal</th>
                     <th>Karyawan</th>
                     <th>Cabang</th>
                     <th>Masuk</th>
@@ -53,6 +54,10 @@ $tgl_sekarang = date('Y-m-d');
                 while($r = $stmt->fetch()):
                 ?>
                 <tr>
+                    <td>
+                        <b style="color:#1C1C1E; font-size:13px;"><?= date('d M Y', strtotime($r['tanggal'])) ?></b>
+                        <br><small style="color:#8E8E93; font-size:10px;">Shift <?= $r['shift'] ?></small>
+                    </td>
                     <td>
                         <b style="color:#1C1C1E;"><?= htmlspecialchars($r['nama_lengkap']) ?></b>
                     </td>

@@ -9,6 +9,12 @@ if (isset($_SESSION['user_id'])) {
 
 $error = "";
 
+// Cek jika ada pesan sukses dari halaman lupa_password.php
+if (isset($_SESSION['flash_success'])) {
+    $error = "SUCCESS_FLASH:" . $_SESSION['flash_success'];
+    unset($_SESSION['flash_success']);
+}
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $username = $_POST['username'];
     $password = $_POST['password'];
@@ -51,6 +57,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             --text-dark: #1C1C1E;
             --text-gray: #8E8E93;
             --danger: #FF3B30;
+            --success: #34C759;
         }
 
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -66,7 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             padding: 20px;
         }
 
-        /* Animasi Logo Hidup (Floating) */
         @keyframes logoFloat {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-10px); }
@@ -86,7 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             text-align: center;
         }
 
-        /* Area Logo Tanpa Shape */
         .logo-box {
             margin-bottom: 30px;
         }
@@ -94,7 +99,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         .logo-link {
             display: inline-block;
             text-decoration: none;
-            /* Efek Logo Hidup */
             animation: logoFloat 4s ease-in-out infinite;
         }
 
@@ -120,7 +124,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             font-weight: 600;
         }
 
-        /* Form Input Statis (Tidak Hidup) */
         .form-group {
             margin-bottom: 20px;
             text-align: left;
@@ -159,7 +162,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             color: var(--text-dark);
         }
 
-        /* Focus hanya merubah border, tidak ada transformasi/gerakan */
         input:focus {
             background-color: white;
             border-color: var(--primary);
@@ -193,6 +195,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             display: flex;
             align-items: center;
             gap: 10px;
+            text-align: left;
+        }
+
+        .success-msg {
+            background: #E2F9E9;
+            color: var(--success);
+            padding: 12px 15px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-align: left;
         }
     </style>
 </head>
@@ -210,10 +227,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </div>
 
             <?php if ($error): ?>
-                <div class="error-msg">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <?= $error ?>
-                </div>
+                <?php if (str_starts_with($error, "SUCCESS_FLASH:")): ?>
+                    <div class="success-msg">
+                        <i class="fas fa-check-circle"></i>
+                        <?= str_replace("SUCCESS_FLASH:", "", $error) ?>
+                    </div>
+                <?php else: ?>
+                    <div class="error-msg">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <?= $error ?>
+                    </div>
+                <?php endif; ?>
             <?php endif; ?>
 
             <form action="" method="POST">
@@ -238,6 +262,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 </button>
             </form>
             
+            <!-- Link Lupa Password Baru -->
+            <div style="text-align:center; margin-top:20px;">
+                <a href="lupa_password.php" style="font-size:13px; color:var(--primary); font-weight:700; text-decoration:none;">Lupa Password?</a>
+            </div>
+
             <p style="text-align:center; margin-top:30px; font-size:11px; color:#C7C7CC; font-weight:700;">
                 &copy; <?= date('Y') ?> BUGAR APP MANAGEMENT
             </p>

@@ -33,6 +33,9 @@ if ($filter_type === 'mingguan') {
 
 $mode_detail = isset($_GET['detail_uid']) && is_numeric($_GET['detail_uid']);
 $detail_uid  = (int)($_GET['detail_uid'] ?? 0);
+
+// ── URL Export Excel (membawa filter aktif) ──────────────────
+$export_url = "export_excel_owner.php?filter_type={$filter_type}&tgl_dari={$tgl_dari}&tgl_sampai={$tgl_sampai}";
 ?>
 
 <style>
@@ -40,13 +43,30 @@ $detail_uid  = (int)($_GET['detail_uid'] ?? 0);
     .filter-btn:hover { background:#E5E5EA; color:#1C1C1E; }
     .filter-btn.active { background:var(--primary); color:white; box-shadow:0 4px 10px rgba(88,86,214,0.3); }
     
-    /* Styling Blok Filter Interaktif */
     .stat-block { flex:1; min-width:85px; border-radius:14px; padding:15px 10px; text-align:center; cursor:pointer; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid transparent; user-select: none; -webkit-tap-highlight-color: transparent; }
     .stat-block:hover { transform: translateY(-3px); box-shadow: 0 6px 15px rgba(0,0,0,0.06); }
     .stat-block:active { transform: scale(0.96); }
     .stat-block.active { border-color: currentColor; transform: scale(1.02); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     
     .data-row { transition: opacity 0.3s ease; }
+
+    .btn-excel {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: linear-gradient(135deg, #1D6F42, #2E8B57);
+        color: white;
+        padding: 10px 18px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-size: 13px;
+        font-weight: 700;
+        box-shadow: 0 4px 12px rgba(29,111,66,0.3);
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-excel:hover { background: linear-gradient(135deg, #155232, #1D6F42); box-shadow: 0 6px 18px rgba(29,111,66,0.4); transform: translateY(-1px); }
+    .btn-excel:active { transform: scale(0.97); }
 </style>
 
 <?php if ($mode_detail):
@@ -66,9 +86,21 @@ $detail_uid  = (int)($_GET['detail_uid'] ?? 0);
     $total_tl = array_sum(array_map(fn($x) => $x['status_kehadiran'] === 'Terlambat'   ? 1 : 0, $detail_rows));
     $total_sk = array_sum(array_map(fn($x) => $x['status_kehadiran'] === 'Sakit'       ? 1 : 0, $detail_rows));
     $total_iz = array_sum(array_map(fn($x) => $x['status_kehadiran'] === 'Izin'        ? 1 : 0, $detail_rows));
+
+    // URL export khusus 1 orang (detail_uid)
+    $export_url_detail = "export_excel_owner.php?filter_type={$filter_type}&tgl_dari={$tgl_dari}&tgl_sampai={$tgl_sampai}&detail_uid={$detail_uid}";
 ?>
-<div style="margin-bottom:15px;">
-    <a href="riwayat_owner.php?filter_type=<?= $filter_type ?>&tgl_dari=<?= $tgl_dari ?>&tgl_sampai=<?= $tgl_sampai ?>" style="display:inline-flex; align-items:center; gap:8px; background:white; border:1.5px solid #E5E5EA; color:#1C1C1E; padding:10px 18px; border-radius:12px; text-decoration:none; font-size:13px; font-weight:700; box-shadow:0 2px 10px rgba(0,0,0,0.02);"><i class="fas fa-arrow-left" style="color:var(--primary);"></i> Kembali ke Daftar</a>
+
+<!-- Baris navigasi atas: Kembali + Tombol Export -->
+<div style="margin-bottom:15px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+    <a href="riwayat_owner.php?filter_type=<?= $filter_type ?>&tgl_dari=<?= $tgl_dari ?>&tgl_sampai=<?= $tgl_sampai ?>"
+       style="display:inline-flex; align-items:center; gap:8px; background:white; border:1.5px solid #E5E5EA; color:#1C1C1E; padding:10px 18px; border-radius:12px; text-decoration:none; font-size:13px; font-weight:700; box-shadow:0 2px 10px rgba(0,0,0,0.02);">
+        <i class="fas fa-arrow-left" style="color:var(--primary);"></i> Kembali ke Daftar
+    </a>
+
+    <a href="<?= $export_url_detail ?>" class="btn-excel">
+        <i class="fas fa-file-excel"></i> Export Excel (<?= htmlspecialchars($dUser['nama_lengkap']) ?>)
+    </a>
 </div>
 
 <div class="card slide-up">
@@ -111,7 +143,14 @@ $detail_uid  = (int)($_GET['detail_uid'] ?? 0);
 </div>
 
 <div class="card slide-up delay-1">
-    <div class="card-title" style="margin-bottom:20px;"><i class="fas fa-list-alt" style="color:var(--primary)"></i> Riwayat Lengkap Absensi <?= $label_periode ?></div>
+    <div class="card-title" style="margin-bottom:20px; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <span><i class="fas fa-list-alt" style="color:var(--primary)"></i> Riwayat Lengkap Absensi <?= $label_periode ?></span>
+        <?php if($detail_rows): ?>
+        <a href="<?= $export_url_detail ?>" class="btn-excel" style="font-size:12px; padding:8px 14px;">
+            <i class="fas fa-file-excel"></i> Export Excel
+        </a>
+        <?php endif; ?>
+    </div>
     
     <?php if(!$detail_rows): ?>
         <div style="text-align:center; padding:30px; color:#8E8E93; font-weight:600;">Tidak ada riwayat absensi pada periode ini.</div>
@@ -182,9 +221,7 @@ $detail_uid  = (int)($_GET['detail_uid'] ?? 0);
 </div>
 
 <script>
-// Fungsi Filter Data berdasarkan Blok yang diklik
 function filterTable(status, el) {
-    // Ubah status aktif pada blok
     document.querySelectorAll('.stat-block').forEach(b => b.classList.remove('active'));
     el.classList.add('active');
 
@@ -194,7 +231,6 @@ function filterTable(status, el) {
     rows.forEach(row => {
         if (status === 'all' || row.getAttribute('data-status') === status) {
             row.style.display = '';
-            // Efek transisi smooth
             row.style.opacity = '0';
             setTimeout(() => row.style.opacity = '1', 50);
             count++;
@@ -218,7 +254,13 @@ $branches = $pdo->query("SELECT * FROM branches ORDER BY id ASC")->fetchAll();
 ?>
 
 <div class="card slide-up">
-    <div class="card-title"><i class="fas fa-filter" style="color:var(--primary)"></i> Filter Periode Absensi</div>
+    <div class="card-title" style="justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <span><i class="fas fa-filter" style="color:var(--primary)"></i> Filter Periode Absensi</span>
+        <!-- ══ TOMBOL EXPORT EXCEL SEMUA CABANG ══ -->
+        <a href="<?= $export_url ?>" class="btn-excel">
+            <i class="fas fa-file-excel"></i> Export Excel Semua Cabang
+        </a>
+    </div>
     
     <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:15px;">
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -238,8 +280,15 @@ $branches = $pdo->query("SELECT * FROM branches ORDER BY id ASC")->fetchAll();
             </div>
         </form>
     </div>
-    <div style="font-size:13px; color:#8E8E93; font-weight:600; background:rgba(88, 86, 214, 0.08); padding:8px 15px; border-radius:10px; display:inline-block;">
-        <i class="fas fa-info-circle" style="color:var(--primary);"></i> Menampilkan data: <b style="color:#1C1C1E;"><?= $label_periode ?></b>
+
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:13px; color:#8E8E93; font-weight:600; background:rgba(88, 86, 214, 0.08); padding:8px 15px; border-radius:10px; display:inline-block;">
+            <i class="fas fa-info-circle" style="color:var(--primary);"></i> Menampilkan data: <b style="color:#1C1C1E;"><?= $label_periode ?></b>
+        </div>
+        <!-- Tombol export duplikat di bawah info periode, lebih mudah dilihat -->
+        <a href="<?= $export_url ?>" class="btn-excel" style="font-size:12px; padding:8px 14px;">
+            <i class="fas fa-download"></i> Download Excel (<?= $label_periode ?>)
+        </a>
     </div>
 </div>
 
@@ -250,21 +299,29 @@ $branches = $pdo->query("SELECT * FROM branches ORDER BY id ASC")->fetchAll();
 
     $cabang_total_hadir = $cabang_total_terlambat = $cabang_total_sakit = $cabang_total_izin = 0;
     foreach ($staf_list as $su) {
-        $cabang_total_hadir += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai'")->fetchColumn();
+        $cabang_total_hadir     += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai'")->fetchColumn();
         $cabang_total_terlambat += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai' AND status_kehadiran='Terlambat'")->fetchColumn();
-        $cabang_total_sakit += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai' AND status_kehadiran='Sakit'")->fetchColumn();
-        $cabang_total_izin += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai' AND status_kehadiran='Izin'")->fetchColumn();
+        $cabang_total_sakit     += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai' AND status_kehadiran='Sakit'")->fetchColumn();
+        $cabang_total_izin      += $pdo->query("SELECT COUNT(*) FROM attendance WHERE user_id={$su['id']} AND tanggal BETWEEN '$tgl_dari' AND '$tgl_sampai' AND status_kehadiran='Izin'")->fetchColumn();
     }
+
+    // URL export per-cabang
+    $export_url_cabang = "export_excel_owner.php?filter_type={$filter_type}&tgl_dari={$tgl_dari}&tgl_sampai={$tgl_sampai}&branch_id={$b['id']}";
 ?>
 <div class="card slide-up" style="margin-bottom:25px;">
     <div style="display:flex; justify-content:space-between; align-items:center; background:linear-gradient(135deg,#1C1C1E,#3A3A3C); padding:15px 20px; border-radius:14px; margin-bottom:18px; color:white; flex-wrap:wrap; gap:15px;">
         <div style="font-size:16px; font-weight:800;"><i class="fas fa-building" style="color:var(--primary); margin-right:8px;"></i> <?= htmlspecialchars($b['nama_cabang']) ?></div>
         
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
             <div style="text-align:center; background:rgba(255,255,255,0.1); padding:8px 14px; border-radius:10px;"><div style="font-size:16px; font-weight:800;"><?= $cabang_total_hadir ?></div><div style="font-size:9px; font-weight:700;">TOTAL DATA</div></div>
             <div style="text-align:center; background:rgba(255,59,48,0.25); padding:8px 14px; border-radius:10px;"><div style="font-size:16px; font-weight:800; color:#FF6B60;"><?= $cabang_total_terlambat ?></div><div style="font-size:9px; font-weight:700;">TELAT</div></div>
             <div style="text-align:center; background:rgba(255,149,0,0.25); padding:8px 14px; border-radius:10px;"><div style="font-size:16px; font-weight:800; color:#FF9500;"><?= $cabang_total_sakit ?></div><div style="font-size:9px; font-weight:700;">SAKIT</div></div>
             <div style="text-align:center; background:rgba(88,86,214,0.3); padding:8px 14px; border-radius:10px;"><div style="font-size:16px; font-weight:800; color:#A4A3E3;"><?= $cabang_total_izin ?></div><div style="font-size:9px; font-weight:700;">IZIN</div></div>
+            <!-- ══ TOMBOL EXPORT PER CABANG ══ -->
+            <a href="<?= $export_url_cabang ?>"
+               style="display:inline-flex; align-items:center; gap:6px; background:linear-gradient(135deg,#1D6F42,#2E8B57); color:white; padding:8px 14px; border-radius:10px; text-decoration:none; font-size:12px; font-weight:700; box-shadow:0 2px 8px rgba(0,0,0,0.2); white-space:nowrap;">
+                <i class="fas fa-file-excel"></i> Export
+            </a>
         </div>
     </div>
     
@@ -310,9 +367,17 @@ $branches = $pdo->query("SELECT * FROM branches ORDER BY id ASC")->fetchAll();
                     <td style="text-align:center;"><b style="color:<?= $u['credit_score'] < 80 ? 'var(--danger)' : 'var(--warning)' ?>; font-size:14px;"><?= $u['credit_score'] ?></b></td>
                     
                     <td style="text-align:center;">
-                        <a href="riwayat_owner.php?detail_uid=<?= $u['id'] ?>&filter_type=<?= $filter_type ?>&tgl_dari=<?= $tgl_dari ?>&tgl_sampai=<?= $tgl_sampai ?>" style="background:var(--primary); color:white; padding:8px 14px; border-radius:10px; text-decoration:none; font-size:12px; font-weight:bold; display:inline-block; transition:0.2s; box-shadow:0 4px 10px rgba(88,86,214,0.3);">
-                            <i class="fas fa-list"></i> Detail
-                        </a>
+                        <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                            <a href="riwayat_owner.php?detail_uid=<?= $u['id'] ?>&filter_type=<?= $filter_type ?>&tgl_dari=<?= $tgl_dari ?>&tgl_sampai=<?= $tgl_sampai ?>"
+                               style="background:var(--primary); color:white; padding:7px 12px; border-radius:10px; text-decoration:none; font-size:12px; font-weight:bold; display:inline-flex; align-items:center; gap:4px; box-shadow:0 4px 10px rgba(88,86,214,0.3);">
+                                <i class="fas fa-list"></i> Detail
+                            </a>
+                            <!-- ══ TOMBOL EXPORT PER ORANG ══ -->
+                            <a href="export_excel_owner.php?filter_type=<?= $filter_type ?>&tgl_dari=<?= $tgl_dari ?>&tgl_sampai=<?= $tgl_sampai ?>&detail_uid=<?= $u['id'] ?>"
+                               style="background:linear-gradient(135deg,#1D6F42,#2E8B57); color:white; padding:7px 12px; border-radius:10px; text-decoration:none; font-size:12px; font-weight:bold; display:inline-flex; align-items:center; gap:4px; box-shadow:0 4px 10px rgba(29,111,66,0.3);">
+                                <i class="fas fa-file-excel"></i>
+                            </a>
+                        </div>
                     </td>
                 </tr>
                 <?php endforeach; endif; ?>

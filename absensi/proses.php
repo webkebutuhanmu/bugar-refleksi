@@ -80,19 +80,13 @@ elseif ($action === 'absen_masuk_spv' && $role === 'supervisor') {
     header("Location: $f/dashboard_$f.php");
     exit;
 }
-// ============================================================
-// AJUKAN SAKIT / IZIN
-// ============================================================
 elseif ($action === 'ajukan_izin_sakit') {
     $jenis  = $_POST['jenis'] ?? ''; 
     $alasan = trim($_POST['alasan'] ?? '');
     $shift  = (int)($_POST['shift'] ?? 1);
 
     if (in_array($jenis, ['Sakit', 'Izin'])) {
-        // Semua role (Karyawan, Kasir, SPV) dipotong skor 5
         $pdo->prepare("UPDATE users SET credit_score = credit_score - 5 WHERE id = ?")->execute([$user_id]);
-        
-        // waktu_keluar disamakan dengan waktu_masuk agar tidak dianggap "Sedang Bekerja"
         $pdo->prepare("INSERT INTO attendance (user_id, tanggal, waktu_masuk, waktu_keluar, status_kehadiran, shift, alasan_terlambat, status_alasan) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
             ->execute([$user_id, $tgl, $jam, $jam, $jenis, $shift, $alasan, 'pending']);
     }
@@ -114,7 +108,6 @@ elseif ($action === 'hapus_absen' && $role === 'supervisor') {
         $absenRow = $row->fetch();
 
         if ($absenRow) {
-            // Kembalikan skor jika masih pending
             if (in_array($absenRow['status_kehadiran'], ['Terlambat', 'Sakit', 'Izin']) && $absenRow['status_alasan'] === 'pending') {
                 $pdo->prepare("UPDATE users SET credit_score = credit_score + 5 WHERE id = ?")
                     ->execute([$absenRow['user_id']]);
@@ -130,18 +123,12 @@ elseif ($action === 'approve_alasan' && $role === 'supervisor') {
     $new_status = $_GET['status'] ?? '';
 
     if (in_array($new_status, ['approved', 'rejected']) && $id_absen > 0) {
-        $stmtChk = $pdo->prepare("
-            SELECT a.user_id, u.role
-            FROM attendance a
-            JOIN users u ON a.user_id = u.id
-            WHERE a.id = ?
-        ");
+        $stmtChk = $pdo->prepare("SELECT a.user_id, u.role FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.id = ?");
         $stmtChk->execute([$id_absen]);
         $target = $stmtChk->fetch();
 
         if (!$target || in_array($target['role'], ['supervisor', 'owner'])) {
-            header("Location: $f/approval_$f.php");
-            exit;
+            header("Location: $f/approval_$f.php"); exit;
         }
 
         $uid = $target['user_id'];
@@ -206,6 +193,54 @@ elseif ($action === 'update_jam' && $role === 'owner') {
         ->execute([$_POST['s1_mulai'], $_POST['s1_batas'], $_POST['s2_mulai'], $_POST['s2_batas']]);
     header("Location: $f/pengaturan_$f.php?success=1"); exit;
 }
+elseif ($action === 'update_profil') {
+    // FUNGSI BARU UNTUK UPDATE DATA PROFIL
+    $nama  = $_POST['nama_lengkap'] ?? '';
+    $uname = $_POST['username'] ?? '';
+    $ttl   = $_POST['ttl'] ?? '';
+    $nohp  = $_POST['no_hp'] ?? '';
+    $email = $_POST['email'] ?? '';
+
+    $pdo->prepare("UPDATE users SET nama_lengkap = ?, username = ?, ttl = ?, no_hp = ?, email = ? WHERE id = ?")
+        ->execute([$nama, $uname, $ttl, $nohp, $email, $user_id]);
+
+    $_SESSION['nama'] = $nama; // Update nama di session
+    header("Location: $f/profil_$f.php?success=2"); exit;
+}
+elseif ($action === 'update_foto') {
+    // FUNGSI BARU UNTUK SAVE HASIL CROP FOTO
+    $foto_data = $_POST['foto_data'] ?? '';
+
+    if ($foto_data) {
+        $image_parts = explode(";base64,", $foto_data);
+        if (count($image_parts) == 2) {
+            $image_base64 = base64_decode($image_parts[1]);
+
+            $dir = 'uploads/';
+            if (!is_dir($dir)) { mkdir($dir, 0777, true); }
+
+            // Penamaan file unik
+            $file_name = $dir . 'profil_' . $user_id . '_' . time() . '.jpg';
+
+            // Cek dan hapus foto lama agar server tidak penuh
+            $stmt = $pdo->prepare("SELECT foto_profil FROM users WHERE id = ?");
+            $stmt->execute([$user_id]);
+            $old_foto = $stmt->fetchColumn();
+
+            if ($old_foto && file_exists($old_foto)) {
+                unlink($old_foto);
+            }
+
+            // Simpan gambar baru ke folder
+            file_put_contents($file_name, $image_base64);
+
+            // Update database path foto
+            $pdo->prepare("UPDATE users SET foto_profil = ? WHERE id = ?")
+                ->execute([$file_name, $user_id]);
+        }
+    }
+    header("Location: $f/profil_$f.php?success=3"); exit;
+}
 elseif ($action === 'update_password') {
     $pass_lama    = $_POST['password_lama']    ?? '';
     $pass_baru    = $_POST['password_baru']    ?? '';
@@ -217,10 +252,10 @@ elseif ($action === 'update_password') {
 
     $valid_lama = password_verify($pass_lama, $current_hash) || $pass_lama === $current_hash;
     if (!$valid_lama) {
-        header("Location: $f/profil_$f.php?error=" . urlencode('Password lama yang Anda masukkan salah!')); exit;
+        header("Location: $f/profil_$f.php?error=" . urlencode('Password lama salah!')); exit;
     }
     if ($pass_baru !== $pass_konfirm) {
-        header("Location: $f/profil_$f.php?error=" . urlencode('Konfirmasi password baru tidak cocok!')); exit;
+        header("Location: $f/profil_$f.php?error=" . urlencode('Konfirmasi password tidak cocok!')); exit;
     }
     if (strlen($pass_baru) < 6) {
         header("Location: $f/profil_$f.php?error=" . urlencode('Password baru minimal 6 karakter!')); exit;
